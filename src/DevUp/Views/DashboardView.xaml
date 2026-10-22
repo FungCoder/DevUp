@@ -1,0 +1,328 @@
+<UserControl x:Class="DevUp.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:DevUp.Core">
+
+    <UserControl.Resources>
+        <!-- 快捷操作：可点击的整行磁贴 -->
+        <Style x:Key="QuickTile" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Margin" Value="0,0,0,7" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="#F8FAFD" BorderBrush="{StaticResource LineBrush}"
+                                BorderThickness="1" CornerRadius="8" Padding="10,8">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#EFF5FF" />
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#BBD3F7" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="TileIcon" TargetType="Border">
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Background" Value="#EAF1FE" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="InfoLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{StaticResource SubTextBrush}" />
+        </Style>
+
+        <Style x:Key="InfoValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,3,0,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+
+            <!-- 统计卡片：只保留用户一眼能看懂的三件事 -->
+            <UniformGrid Columns="3">
+                <Button Style="{StaticResource StatCard}" Click="SoftwareCard_Click"
+                        AutomationProperties.AutomationId="CardSoftware" AutomationProperties.Name="查看可更新的软件"
+                        ToolTip="打开软件更新页，查看可升级的软件列表">
+                    <StackPanel>
+                        <Grid>
+                            <TextBlock Style="{StaticResource SubTitle}" Text="可更新的软件" />
+                            <TextBlock Text="查看 ›" FontSize="11.5" Foreground="{StaticResource AccentBrush}"
+                                       HorizontalAlignment="Right" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <TextBlock Style="{StaticResource StatValue}" Foreground="{StaticResource WarnBrush}"
+                                       Text="{Binding Summary.SoftwareUpdates}" />
+                            <TextBlock Style="{StaticResource SubTitle}" Text=" 个" VerticalAlignment="Bottom" Margin="3,0,0,5" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource SubTitle}" Margin="0,4,0,0">
+                            <Run Text="已安装 " /><Run Text="{Binding Summary.SoftwareTotal, Mode=OneWay}" /><Run Text=" 款软件" />
+                        </TextBlock>
+                    </StackPanel>
+                </Button>
+
+                <Button Style="{StaticResource StatCard}" Click="DriverCard_Click"
+                        AutomationProperties.AutomationId="CardDriver" AutomationProperties.Name="查看可更新的驱动"
+                        ToolTip="打开驱动与设备页，查看可安装的驱动更新">
+                    <StackPanel>
+                        <Grid>
+                            <TextBlock Style="{StaticResource SubTitle}" Text="可更新的驱动" />
+                            <TextBlock Text="查看 ›" FontSize="11.5" Foreground="{StaticResource AccentBrush}"
+                                       HorizontalAlignment="Right" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <TextBlock Style="{StaticResource StatValue}" Foreground="{StaticResource WarnBrush}"
+                                       Text="{Binding Summary.DriverUpdates}" />
+                            <TextBlock Style="{StaticResource SubTitle}" Text=" 个" VerticalAlignment="Bottom" Margin="3,0,0,5" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource SubTitle}" Margin="0,4,0,0">
+                            <Run Text="驱动仓库 " /><Run Text="{Binding Summary.DriverPackages, Mode=OneWay}" /><Run Text=" 个安装包" />
+                        </TextBlock>
+                    </StackPanel>
+                </Button>
+
+                <Button Style="{StaticResource StatCard}" Margin="0,0,0,12" Click="ProblemCard_Click"
+                        AutomationProperties.AutomationId="CardProblem" AutomationProperties.Name="查看需要处理的设备"
+                        ToolTip="设备管理器里带黄色感叹号、无法启动或缺少驱动的设备">
+                    <StackPanel>
+                        <Grid>
+                            <TextBlock Style="{StaticResource SubTitle}" Text="需要处理的设备" />
+                            <TextBlock Text="查看 ›" FontSize="11.5" Foreground="{StaticResource AccentBrush}"
+                                       HorizontalAlignment="Right" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <TextBlock Text="{Binding Summary.DeviceProblem}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource StatValue}">
+                                        <Setter Property="Foreground" Value="{StaticResource ErrBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Summary.DeviceProblem}" Value="0">
+                                                <Setter Property="Foreground" Value="{StaticResource OkBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBlock Style="{StaticResource SubTitle}" Text=" 个" VerticalAlignment="Bottom" Margin="3,0,0,5" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource SubTitle}" Margin="0,4,0,0">
+                            <Run Text="共 " /><Run Text="{Binding Summary.DeviceTotal, Mode=OneWay}" /><Run Text=" 个设备，缺少驱动 " />
+                            <Run Text="{Binding Summary.DeviceUnknown, Mode=OneWay}" /><Run Text=" 个" />
+                        </TextBlock>
+                    </StackPanel>
+                </Button>
+            </UniformGrid>
+
+            <!-- 系统信息 + 快捷操作 -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="0" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="300" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource Card}" VerticalAlignment="Top"
+                        DataContext="{x:Static core:Ctx.Info}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionTitle}" Text="系统信息" Margin="0,0,0,12" />
+
+                        <!-- 操作系统：单行紧凑展示 -->
+                        <Border Background="#F7F9FC" BorderBrush="{StaticResource LineBrush}" BorderThickness="1"
+                                CornerRadius="7" Padding="12,9" Margin="0,0,0,14">
+                            <Grid>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding OsName}" FontSize="13.5" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextBrush}" />
+                                    <TextBlock Text="{Binding OsLine}" Style="{StaticResource SubTitle}"
+                                               Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <Border Background="#EAF1FE" CornerRadius="5" Padding="7,2" HorizontalAlignment="Right"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Arch}" FontSize="11"
+                                               Foreground="{StaticResource AccentDarkBrush}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,16,14">
+                                <TextBlock Style="{StaticResource InfoLabel}" Text="处理器" />
+                                <TextBlock Style="{StaticResource InfoValue}" Text="{Binding Cpu}" />
+                                <TextBlock Style="{StaticResource SubTitle}" FontSize="11" Margin="0,1,0,0"
+                                           Text="{Binding Cores}" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,14">
+                                <TextBlock Style="{StaticResource InfoLabel}" Text="内存" />
+                                <TextBlock Style="{StaticResource InfoValue}" Text="{Binding Ram}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,16,14">
+                                <TextBlock Style="{StaticResource InfoLabel}" Text="设备型号" />
+                                <TextBlock Style="{StaticResource InfoValue}" Text="{Binding Model}" />
+                                <TextBlock Style="{StaticResource SubTitle}" FontSize="11" Margin="0,1,0,0"
+                                           Text="{Binding Manufacturer}" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,14">
+                                <TextBlock Style="{StaticResource InfoLabel}" Text="BIOS 版本" />
+                                <TextBlock Style="{StaticResource InfoValue}" Text="{Binding BiosVersion}" />
+                                <TextBlock Style="{StaticResource SubTitle}" FontSize="11" Margin="0,1,0,0"
+                                           Text="{Binding BiosDate}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Style="{StaticResource InfoLabel}" Text="计算机名" />
+                                <TextBlock Style="{StaticResource InfoValue}" Text="{Binding MachineName}" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="2" Grid.Column="1">
+                                <TextBlock Style="{StaticResource InfoLabel}" Text="系统安装日期" />
+                                <TextBlock Style="{StaticResource InfoValue}" Text="{Binding InstallDate}" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Style="{StaticResource SectionTitle}" Text="快捷操作" Margin="0,0,0,10" />
+
+                        <Button Style="{StaticResource QuickTile}" Click="BtnScanDevices_Click">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource TileIcon}">
+                                    <TextBlock Text="①" FontSize="13" Foreground="{StaticResource AccentDarkBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="扫描设备与驱动仓库" FontSize="12.5" FontWeight="SemiBold" />
+                                    <TextBlock Text="重新枚举硬件与已安装驱动" Style="{StaticResource SubTitle}" FontSize="11" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="›" FontSize="15" Foreground="{StaticResource SubTextBrush}"
+                                           VerticalAlignment="Center" Margin="6,0,0,0" />
+                            </Grid>
+                        </Button>
+
+                        <Button Style="{StaticResource QuickTile}" Click="BtnScanDriverUpdates_Click">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource TileIcon}">
+                                    <TextBlock Text="②" FontSize="13" Foreground="{StaticResource AccentDarkBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="检查驱动更新" FontSize="12.5" FontWeight="SemiBold" />
+                                    <TextBlock Text="从 Windows Update 官方源匹配" Style="{StaticResource SubTitle}" FontSize="11" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="›" FontSize="15" Foreground="{StaticResource SubTextBrush}"
+                                           VerticalAlignment="Center" Margin="6,0,0,0" />
+                            </Grid>
+                        </Button>
+
+                        <Button Style="{StaticResource QuickTile}" Click="BtnScanSoftwareUpdates_Click">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource TileIcon}">
+                                    <TextBlock Text="③" FontSize="13" Foreground="{StaticResource AccentDarkBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="检查软件更新" FontSize="12.5" FontWeight="SemiBold" />
+                                    <TextBlock Text="通过 winget 官方源比对版本" Style="{StaticResource SubTitle}" FontSize="11" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="›" FontSize="15" Foreground="{StaticResource SubTextBrush}"
+                                           VerticalAlignment="Center" Margin="6,0,0,0" />
+                            </Grid>
+                        </Button>
+
+                        <Button Style="{StaticResource QuickTile}" Click="BtnBackup_Click">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Style="{StaticResource TileIcon}">
+                                    <TextBlock Text="④" FontSize="13" Foreground="{StaticResource AccentDarkBrush}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="备份全部驱动" FontSize="12.5" FontWeight="SemiBold" />
+                                    <TextBlock Text="导出到设置中的备份目录" Style="{StaticResource SubTitle}" FontSize="11" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="›" FontSize="15" Foreground="{StaticResource SubTextBrush}"
+                                           VerticalAlignment="Center" Margin="6,0,0,0" />
+                            </Grid>
+                        </Button>
+
+                        <TextBlock Style="{StaticResource SubTitle}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                   Text="驱动安装与系统还原点会自动请求管理员权限。" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- 最近日志 -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource SectionTitle}" Text="最近日志" />
+                    <ScrollViewer MaxHeight="180" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Logs}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="62" />
+                                            <ColumnDefinition Width="58" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Style="{StaticResource SubTitle}"
+                                                   Text="{Binding Time, StringFormat=HH:mm:ss}" />
+                                        <TextBlock Grid.Column="1" Style="{StaticResource SubTitle}" Text="{Binding Level}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Message}" TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

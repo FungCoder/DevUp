@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
+  <metadata>
+    <id>MSCatalog</id>
+    <version>0.27.0</version>
+    <authors>Ryan Kowalewski</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectUrl>https://github.com/ryan-jan/MSCatalog</projectUrl>
+    <description>PowerShell module for searching and downloading offline updates from https://www.catalog.update.microsoft.com</description>
+    <releaseNotes></releaseNotes>
+    <copyright>(c) 2019 Ryan Kowalewski. All rights reserved.</copyright>
+    <tags>PSModule PSIncludes_Function PSFunction_Get-MSCatalogUpdate PSFunction_Save-MSCatalogUpdate PSCommand_Get-MSCatalogUpdate PSCommand_Save-MSCatalogUpdate</tags>
+  </metadata>
+</package>

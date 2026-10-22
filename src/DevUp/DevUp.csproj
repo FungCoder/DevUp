@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+
+    <AssemblyName>DevUp</AssemblyName>
+    <RootNamespace>DevUp</RootNamespace>
+    <Version>1.0.0</Version>
+    <Product>DevUp 驱动与软件更新助手</Product>
+    <AssemblyTitle>DevUp</AssemblyTitle>
+    <Company>风之翼灵'Blog</Company>
+    <Copyright>© 2026 风之翼灵'Blog (www.fungj.com). 保留所有权利。</Copyright>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <Description>组合 PSWindowsUpdate / Nefarius.Utilities.DeviceManagement / winget / pnputil 的驱动与软件更新工具</Description>
+
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <UseWindowsForms>false</UseWindowsForms>
+
+    <!-- 发布：单文件、自包含 -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 应用图标（exe 图标由 ApplicationIcon 指定；这里作为 WPF 资源供界面使用） -->
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 复用：SetupAPI / CfgMgr32 / DriverStore 的 .NET 封装 (MIT, Nefarius) -->
+    <PackageReference Include="Nefarius.Utilities.DeviceManagement" Version="6.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 复用：PowerShell 后端脚本（内嵌，运行时释放） -->
+    <EmbeddedResource Include="Scripts\devup.ps1" LogicalName="devup.ps1" />
+    <!-- 复用：PSWindowsUpdate 模块 (MIT)，内嵌后释放到运行时目录 -->
+    <EmbeddedResource Include="..\..\lib\PSWindowsUpdate\**\*">
+      <LogicalName>PSWindowsUpdate/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <!-- 复用：MSCatalog 模块 (MIT)，内嵌后释放到运行时目录 -->
+    <EmbeddedResource Include="..\..\lib\MSCatalog\**\*">
+      <LogicalName>MSCatalog/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>

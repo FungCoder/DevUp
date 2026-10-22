@@ -1,0 +1,21 @@
+# 编译产物
+[Bb]in/
+[Oo]bj/
+build/
+publish/
+*.user
+*.suo
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+
+# NuGet
+*.nupkg
+packages/
+
+# 系统文件
+Thumbs.db
+desktop.ini
+.DS_Store
