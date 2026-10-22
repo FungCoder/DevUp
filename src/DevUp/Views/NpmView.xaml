@@ -1,0 +1,301 @@
+<UserControl x:Class="DevUp.Views.NpmView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <UserControl.Resources>
+        <!-- 状态标签：可更新=蓝，已是最新=绿，未检查=灰 -->
+        <DataTemplate x:Key="NpmStatusCell">
+            <Border x:Name="pill" CornerRadius="9" Padding="8,2" HorizontalAlignment="Left"
+                    VerticalAlignment="Center" Background="#F1F3F7">
+                <TextBlock x:Name="txt" Text="未检查" FontSize="11.5" Foreground="#7B8794" />
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Checked}" Value="True">
+                    <Setter TargetName="pill" Property="Background" Value="#EAF8EF" />
+                    <Setter TargetName="txt" Property="Foreground" Value="#15803D" />
+                    <Setter TargetName="txt" Property="Text" Value="已是最新" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding HasUpdate}" Value="True">
+                    <Setter TargetName="pill" Property="Background" Value="#EAF1FE" />
+                    <Setter TargetName="txt" Property="Foreground" Value="#2D6CDF" />
+                    <Setter TargetName="txt" Property="Text" Value="可更新" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <Style x:Key="DetailLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{StaticResource SubTextBrush}" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+
+        <Style x:Key="DetailValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+
+        <Style x:Key="MonoText" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Consolas, Cascadia Mono, Courier New" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Foreground" Value="#4A5568" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 工具栏 -->
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="BtnRefresh" Content="刷新全局包" Style="{StaticResource GhostButton}"
+                        Click="BtnRefresh_Click" />
+                <Button x:Name="BtnCheck" Content="检查更新" Style="{StaticResource PrimaryButton}"
+                        Margin="8,0,0,0" Click="BtnCheck_Click" />
+                <Button x:Name="BtnUpgradeAll" Content="全部升级" Style="{StaticResource GhostButton}"
+                        Margin="8,0,0,0" Click="BtnUpgradeAll_Click" />
+            </StackPanel>
+            <TextBlock x:Name="EnvLine" Style="{StaticResource SubTitle}" HorizontalAlignment="Right"
+                       VerticalAlignment="Center" FontSize="11.5" Text="正在读取 Node.js 环境…" />
+        </Grid>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3.2*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="2.6*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左侧：npm 全局包列表 -->
+            <Border Grid.Column="0" Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,12">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Node.js 包" Margin="0,0,10,0"
+                                       VerticalAlignment="Center" />
+                            <Border Background="#F1F5FB" CornerRadius="6" Padding="7,1" VerticalAlignment="Center"
+                                    Margin="0,0,10,0">
+                                <TextBlock x:Name="PackageCountText" FontSize="11.5"
+                                           Foreground="{StaticResource SubTextBrush}" />
+                            </Border>
+                            <ComboBox x:Name="CmbFilter" Width="118" Style="{StaticResource FilterCombo}"
+                                      VerticalAlignment="Center" SelectionChanged="CmbFilter_SelectionChanged">
+                                <ComboBoxItem Content="全部包" Tag="all" IsSelected="True" />
+                                <ComboBoxItem Content="仅可更新" Tag="updates" />
+                            </ComboBox>
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource SubTitle}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   Text="npm 全局安装（-g）" FontSize="11.5" />
+                    </Grid>
+
+                    <Grid Grid.Row="1">
+                        <DataGrid x:Name="PackageGrid" ItemsSource="{Binding Packages}" RowHeight="40"
+                                  SelectionMode="Single" SelectionChanged="PackageGrid_SelectionChanged"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="包名" Binding="{Binding Name}" Width="2.4*">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="VerticalAlignment" Value="Center" />
+                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                            <Setter Property="ToolTip" Value="{Binding Name}" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+
+                                <DataGridTextColumn Header="已安装" Binding="{Binding InstalledVersion}" Width="108">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="VerticalAlignment" Value="Center" />
+                                            <Setter Property="Foreground" Value="{StaticResource SubTextBrush}" />
+                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                            <Setter Property="ToolTip" Value="{Binding InstalledVersion}" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+
+                                <DataGridTextColumn Header="最新" Binding="{Binding LatestDisplay}" Width="108">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="VerticalAlignment" Value="Center" />
+                                            <Setter Property="Foreground" Value="{StaticResource SubTextBrush}" />
+                                            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                            <Setter Property="ToolTip" Value="{Binding LatestDisplay}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasUpdate}" Value="True">
+                                                    <Setter Property="Foreground" Value="#2D6CDF" />
+                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+
+                                <DataGridTemplateColumn Header="状态" Width="92" CanUserSort="False"
+                                                        CellTemplate="{StaticResource NpmStatusCell}" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <!-- 空状态 -->
+                        <StackPanel x:Name="EmptyPanel" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    Margin="0,30,0,0" IsHitTestVisible="False" Visibility="Collapsed">
+                            <TextBlock x:Name="EmptyTitle" Text="正在读取 npm 全局包…" FontSize="12.5"
+                                       FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock x:Name="EmptyDesc" Text="首次读取可能需要几秒钟" FontSize="11.5"
+                                       Margin="0,3,0,0" Foreground="#A6AEBB" TextWrapping="Wrap"
+                                       TextAlignment="Center" MaxWidth="270" HorizontalAlignment="Center" />
+                        </StackPanel>
+
+                        <!-- 未安装 Node.js / npm 不可用时的友好引导 -->
+                        <StackPanel x:Name="SetupPanel" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                    Margin="0,20,0,0" MaxWidth="330" Visibility="Collapsed">
+                            <Border Width="54" Height="54" CornerRadius="15" Background="#EAF8EF"
+                                    HorizontalAlignment="Center">
+                                <TextBlock Text="JS" FontSize="18" FontWeight="Bold" Foreground="#15803D"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock x:Name="SetupTitle" Text="这个功能需要 Node.js" FontSize="14.5"
+                                       FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"
+                                       HorizontalAlignment="Center" Margin="0,12,0,0" TextWrapping="Wrap"
+                                       TextAlignment="Center" />
+                            <TextBlock x:Name="SetupDesc" FontSize="11.8" Foreground="{StaticResource SubTextBrush}"
+                                       HorizontalAlignment="Center" Margin="0,6,0,0" TextWrapping="Wrap"
+                                       TextAlignment="Center" LineHeight="18" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
+                                <Button Content="打开 Node.js 下载页" Style="{StaticResource PrimaryButton}"
+                                        Padding="14,7" FontSize="12.5" Click="BtnOpenNode_Click" />
+                                <Button Content="重新检测" Style="{StaticResource GhostButton}"
+                                        Margin="8,0,0,0" Padding="14,7" FontSize="12.5" Click="BtnRetry_Click" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock x:Name="NpmHint" Grid.Row="2" Style="{StaticResource SubTitle}" Margin="0,10,0,0"
+                               TextTrimming="CharacterEllipsis" />
+                </Grid>
+            </Border>
+
+            <!-- 右侧：包详情 + 环境信息 -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Style="{StaticResource Card}" MaxHeight="392">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="0,0,0,8">
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="包详情" Margin="0" />
+                            <Border x:Name="DetailBadge" Visibility="Collapsed" CornerRadius="9" Padding="8,2"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center" Background="#EAF1FE">
+                                <TextBlock x:Name="DetailBadgeText" FontSize="11.5" Foreground="#2D6CDF" />
+                            </Border>
+                        </Grid>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel>
+                                <TextBlock x:Name="DetailEmpty" Style="{StaticResource SubTitle}" TextWrapping="Wrap"
+                                           Text="在左侧点击一个 npm 全局包，这里会显示版本、说明和安装位置。" />
+
+                                <StackPanel x:Name="DetailBody" Visibility="Collapsed">
+                                    <TextBlock x:Name="DetailName" FontSize="15" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" />
+                                    <TextBlock x:Name="DetailMeta" FontSize="11.5" Margin="0,3,0,12"
+                                               Foreground="{StaticResource SubTextBrush}" TextWrapping="Wrap" />
+
+                                    <TextBlock Style="{StaticResource DetailLabel}" Text="已安装版本" />
+                                    <TextBlock x:Name="DetailInstalled" Style="{StaticResource DetailValue}" />
+
+                                    <TextBlock Style="{StaticResource DetailLabel}" Text="最新版本" />
+                                    <TextBlock x:Name="DetailLatest" Style="{StaticResource DetailValue}" />
+
+                                    <TextBlock Style="{StaticResource DetailLabel}" Text="包说明" />
+                                    <TextBlock x:Name="DetailDescription" Style="{StaticResource DetailValue}" />
+
+                                    <TextBlock Style="{StaticResource DetailLabel}" Text="安装位置" />
+                                    <TextBlock x:Name="DetailLocation" Style="{StaticResource MonoText}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <StackPanel x:Name="DetailActions" Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0"
+                                    Visibility="Collapsed">
+                            <Button x:Name="BtnUpgradeThis" Content="升级到最新版" Style="{StaticResource PrimaryButton}"
+                                    IsEnabled="False" Click="BtnUpgradeThis_Click" />
+                            <Button x:Name="BtnUninstallThis" Content="卸载此包" Style="{StaticResource GhostButton}"
+                                    Margin="8,0,0,0" IsEnabled="False" Click="BtnUninstallThis_Click"
+                                    ToolTip="从 npm 全局目录删除这个包" />
+                            <Button x:Name="BtnOpenNpm" Content="npm 包主页" Style="{StaticResource GhostButton}"
+                                    Margin="8,0,0,0" Padding="10,7" FontSize="12" Click="BtnOpenNpm_Click"
+                                    ToolTip="在浏览器中打开这个包的官方页面" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Node.js 与 npm" Margin="0,0,0,2" />
+                            <TextBlock Style="{StaticResource SubTitle}" TextWrapping="Wrap" FontSize="11.5"
+                                       Text="AI 命令行工具通常通过 npm 全局安装；这里显示当前实际使用的 npm。" />
+                        </StackPanel>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource DetailLabel}" Text="Node.js 版本" />
+                                <TextBlock x:Name="EnvNode" Style="{StaticResource DetailValue}" />
+
+                                <TextBlock Style="{StaticResource DetailLabel}" Text="npm 版本" />
+                                <TextBlock x:Name="EnvNpm" Style="{StaticResource DetailValue}" />
+
+                                <TextBlock Style="{StaticResource DetailLabel}" Text="npm 可执行文件" />
+                                <TextBlock x:Name="EnvPath" Style="{StaticResource MonoText}" />
+
+                                <TextBlock Style="{StaticResource DetailLabel}" Text="全局包目录" />
+                                <TextBlock x:Name="EnvRoot" Style="{StaticResource MonoText}" />
+
+                                <Border x:Name="EnvErrorPanel" Visibility="Collapsed" Background="#FFF7E6"
+                                        BorderBrush="#F3D19B" BorderThickness="1" CornerRadius="8"
+                                        Padding="10,8" Margin="0,6,0,0">
+                                    <StackPanel>
+                                        <TextBlock x:Name="EnvErrorTitle" Text="npm 当前不可用" FontSize="12"
+                                                   FontWeight="SemiBold" Foreground="#A26A00" />
+                                        <TextBlock x:Name="EnvError" FontSize="11.5" Foreground="#8A5A00"
+                                                   TextWrapping="Wrap" Margin="0,4,0,0" LineHeight="17" />
+                                        <TextBlock x:Name="EnvDetail" FontSize="10.5" Foreground="#8A5A00"
+                                                   TextWrapping="Wrap" Margin="0,5,0,0" Opacity="0.85" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

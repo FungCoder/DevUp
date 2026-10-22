@@ -1,0 +1,29 @@
+# 统一以 LF 存储，检出时交给 Git 自行转换
+* text=auto
+
+# PowerShell 脚本：统一 CRLF，且保留 UTF-8 BOM
+# （不用 working-tree-encoding，避免 BOM 在转换时被吃掉；
+#   PowerShell 5.1 遇到无 BOM 的中文脚本会按 GBK 解析而报错）
+*.ps1 text eol=crlf
+
+# 源码
+*.cs text
+*.xaml text
+*.csproj text
+*.sln text
+*.md text
+*.json text
+*.yml text
+*.yaml text
+
+# 二进制资源
+*.ico binary
+*.png binary
+*.jpg binary
+*.dll binary
+*.exe binary
+
+# PSWindowsUpdate 的模块清单是 UTF-16LE，必须按二进制处理，
+# 否则换行符转换会破坏编码，PowerShell 导入时直接报错
+lib/PSWindowsUpdate/PSWindowsUpdate.psd1 binary
+lib/PSWindowsUpdate/PSWindowsUpdate.psm1 binary

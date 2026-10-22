@@ -1,0 +1,54 @@
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验 PowerShell 脚本编码
+        shell: pwsh
+        run: |
+          # devup.ps1 含中文，必须是 UTF-8 with BOM，否则 PowerShell 5.1 会按 GBK 解析而报错
+          $file = 'src/DevUp/Scripts/devup.ps1'
+          $bytes = [System.IO.File]::ReadAllBytes($file)
+          if ($bytes.Length -lt 3 -or $bytes[0] -ne 0xEF -or $bytes[1] -ne 0xBB -or $bytes[2] -ne 0xBF) {
+            throw "$file 缺少 UTF-8 BOM"
+          }
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path $file), [ref]$null, [ref]$errors)
+          if ($errors -and $errors.Count) { throw "脚本语法错误: $errors" }
+          Write-Host "devup.ps1 编码与语法检查通过"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 还原依赖
+        run: dotnet restore src/DevUp/DevUp.csproj
+
+      - name: 编译
+        run: dotnet build src/DevUp/DevUp.csproj -c Release --no-restore
+
+      - name: 发布单文件产物
+        run: >
+          dotnet publish src/DevUp/DevUp.csproj -c Release -r win-x64
+          --self-contained true -p:PublishSingleFile=true -o build/publish
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: DevUp-win-x64
+          path: build/publish/DevUp.exe
+          if-no-files-found: error
