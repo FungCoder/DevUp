@@ -12,14 +12,14 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="bd" Background="#F8FAFD" BorderBrush="{StaticResource LineBrush}"
-                                BorderThickness="1" CornerRadius="8" Padding="10,8">
+                        <Border x:Name="bd" Background="#F7F9FD" BorderBrush="{StaticResource LineBrush}"
+                                BorderThickness="1" CornerRadius="10" Padding="11,10">
                             <ContentPresenter />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="#EFF5FF" />
-                                <Setter TargetName="bd" Property="BorderBrush" Value="#BBD3F7" />
+                                <Setter TargetName="bd" Property="Background" Value="#EEF1FF" />
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#BFC8FA" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="bd" Property="Opacity" Value="0.5" />
@@ -31,10 +31,10 @@
         </Style>
 
         <Style x:Key="TileIcon" TargetType="Border">
-            <Setter Property="Width" Value="26" />
-            <Setter Property="Height" Value="26" />
-            <Setter Property="CornerRadius" Value="7" />
-            <Setter Property="Background" Value="#EAF1FE" />
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Background" Value="#E9EDFF" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
@@ -219,8 +219,10 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Border Style="{StaticResource TileIcon}">
-                                    <TextBlock Text="①" FontSize="13" Foreground="{StaticResource AccentDarkBrush}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Path Data="M3,4 L17,4 L17,16 L3,16 Z M6,8 L14,8 M6,12 L12,12"
+                                          Stroke="{StaticResource AccentDarkBrush}" StrokeThickness="1.6"
+                                          Width="16" Height="16" Stretch="Uniform"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="扫描设备与驱动仓库" FontSize="12.5" FontWeight="SemiBold" />
@@ -239,8 +241,10 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Border Style="{StaticResource TileIcon}">
-                                    <TextBlock Text="②" FontSize="13" Foreground="{StaticResource AccentDarkBrush}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Path Data="M4,7 C6,3 12,2 16,5 M16,5 L16,2 M16,5 L13,5 M16,13 C14,17 8,18 4,15 M4,15 L4,18 M4,15 L7,15"
+                                          Stroke="{StaticResource AccentDarkBrush}" StrokeThickness="1.7"
+                                          Width="17" Height="17" Stretch="Uniform"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="检查驱动更新" FontSize="12.5" FontWeight="SemiBold" />
@@ -259,8 +263,10 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Border Style="{StaticResource TileIcon}">
-                                    <TextBlock Text="③" FontSize="13" Foreground="{StaticResource AccentDarkBrush}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Path Data="M4,6 L16,6 L16,16 L4,16 Z M4,9 L16,9 M8,3 L12,3"
+                                          Stroke="{StaticResource AccentDarkBrush}" StrokeThickness="1.6"
+                                          Width="17" Height="17" Stretch="Uniform"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="检查软件更新" FontSize="12.5" FontWeight="SemiBold" />
@@ -279,8 +285,10 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <Border Style="{StaticResource TileIcon}">
-                                    <TextBlock Text="④" FontSize="13" Foreground="{StaticResource AccentDarkBrush}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Path Data="M4,13 L4,17 L16,17 L16,13 M10,3 L10,13 M6,9 L10,13 L14,9"
+                                          Stroke="{StaticResource AccentDarkBrush}" StrokeThickness="1.7"
+                                          Width="17" Height="17" Stretch="Uniform"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="备份全部驱动" FontSize="12.5" FontWeight="SemiBold" />

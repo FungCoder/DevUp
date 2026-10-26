@@ -1028,35 +1028,32 @@ public sealed class SoftwareService
     {
         var key = Normalize(update.Name);
         var installed = Normalize(update.InstalledVersion);
-        bool Free(SoftwareItem s) => !used.Contains(s);
+        if (installed.Length == 0) return null;
+
+        // 先锁定已装版本，避免把同名但不同版本的更新贴到错误的软件上。
+        var candidates = inventory
+            .Where(s => !used.Contains(s) && Normalize(s.DisplayVersion) == installed)
+            .ToList();
 
         // 1) 名称一致 + 已装版本一致（同名多版本共存时最可靠）
         if (key.Length > 0)
         {
-            var sameName = inventory.Where(s => Free(s) && Normalize(s.DisplayName) == key).ToList();
-            var byVersion = sameName.FirstOrDefault(s => installed.Length > 0 && Normalize(s.DisplayVersion) == installed);
-            if (byVersion is not null) return byVersion;
-            if (sameName.Count > 0) return sameName[0];
+            var byName = candidates.FirstOrDefault(s => Normalize(s.DisplayName) == key);
+            if (byName is not null) return byName;
         }
 
         // 2) winget 包 ID 与显示名互相包含（"Windows 终端" ↔ Microsoft.WindowsTerminal）
-        var byId = inventory.Where(s => Free(s) && NameMatches(s.DisplayName, update.Id)).ToList();
-        var idVersion = byId.FirstOrDefault(s => installed.Length > 0 && Normalize(s.DisplayVersion) == installed);
-        if (idVersion is not null) return idVersion;
-        if (byId.Count > 0) return byId[0];
+        var byId = candidates.FirstOrDefault(s => NameMatches(s.DisplayName, update.Id));
+        if (byId is not null) return byId;
 
         // 3) 名称归一化后互相包含（"Python 3.13.1 (64-bit)" ↔ "Python.Python.3.13" 之外的长名场景）
         if (key.Length > 3)
         {
-            var loose = inventory.Where(s =>
+            return candidates.FirstOrDefault(s =>
             {
-                if (!Free(s)) return false;
                 var n = Normalize(s.DisplayName);
                 return n.Length > 3 && (n.Contains(key) || key.Contains(n));
-            }).ToList();
-            var looseVersion = loose.FirstOrDefault(s => installed.Length > 0 && Normalize(s.DisplayVersion) == installed);
-            if (looseVersion is not null) return looseVersion;
-            if (loose.Count > 0) return loose[0];
+            });
         }
 
         return null;

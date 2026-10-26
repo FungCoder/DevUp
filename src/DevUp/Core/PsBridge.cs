@@ -67,8 +67,16 @@ public static class PsBridge
             Directory.CreateDirectory(dir);
             EnsureNotReparsePoint(dir);
 
-            LockDown(dir);
-            return dir;
+            try
+            {
+                LockDown(dir);
+                return dir;
+            }
+            catch
+            {
+                try { Directory.Delete(dir, recursive: true); } catch { }
+                throw;
+            }
         }
 
         // 普通用户：放在用户目录下，无需管理员，也不会被其他用户读写
@@ -115,12 +123,21 @@ public static class PsBridge
                      })
                 psi.ArgumentList.Add(a);
 
-            using var proc = Process.Start(psi);
-            proc?.WaitForExit(15000);
+            using var proc = Process.Start(psi)
+                ?? throw new InvalidOperationException("无法启动运行时目录权限设置程序。");
+            if (!proc.WaitForExit(15000))
+            {
+                try { proc.Kill(entireProcessTree: true); } catch { }
+                throw new InvalidOperationException("设置运行时目录权限超时，已停止提权操作。");
+            }
+            if (proc.ExitCode != 0)
+                throw new InvalidOperationException(
+                    $"设置运行时目录权限失败（icacls 退出码 {proc.ExitCode}）。");
         }
         catch (Exception ex)
         {
-            Ui.Log("收紧运行时目录权限失败（已按普通权限继续）: " + ex.Message, "WARN");
+            Ui.Log("收紧运行时目录权限失败: " + ex.Message, "ERROR");
+            throw;
         }
     }
 
@@ -307,6 +324,25 @@ public static class PsBridge
         {
             if (string.Equals(kv.Key, "ModulePath", StringComparison.OrdinalIgnoreCase)) continue;
             if (string.Equals(kv.Key, "CatalogModulePath", StringComparison.OrdinalIgnoreCase)) continue;
+
+            if (string.Equals(kv.Key, "MicrosoftUpdate", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(kv.Key, "Silent", StringComparison.OrdinalIgnoreCase))
+            {
+                switch (kv.Value?.Trim().ToLowerInvariant())
+                {
+                    case "1":
+                    case "true":
+                        list.Add("-" + kv.Key);
+                        break;
+                    case "0":
+                    case "false":
+                        break;
+                    default:
+                        throw new ArgumentException($"无效的开关参数值：{kv.Key}");
+                }
+                continue;
+            }
+
             list.Add("-" + kv.Key);
             list.Add(kv.Value ?? "");
         }

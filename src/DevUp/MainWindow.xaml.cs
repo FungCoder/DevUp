@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media.Animation;
 using DevUp.Core;
 using DevUp.Views;
 
@@ -35,7 +36,7 @@ public partial class MainWindow : Window
 
         AdminBadge.Text = Native.IsAdministrator() ? "权限：管理员" : "权限：普通用户（部分操作会临时提权）";
         BtnElevate.Visibility = Native.IsAdministrator() ? Visibility.Collapsed : Visibility.Visible;
-        BuildInfo.Text = "v" + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.0.0");
+        BuildInfo.Text = "v" + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.1.0");
 
         Ctx.State.PropertyChanged += (_, e) =>
         {
@@ -109,6 +110,20 @@ public partial class MainWindow : Window
                 PageHost.Content = _tools;
                 SetHeader("备份与工具", "驱动备份 / 还原 / 还原点 / 报告导出");
                 break;
+        }
+
+        if (SystemParameters.ClientAreaAnimation)
+        {
+            PageHost.BeginAnimation(OpacityProperty, new DoubleAnimation(0.65, 1,
+                TimeSpan.FromMilliseconds(180))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            });
+        }
+        else
+        {
+            PageHost.BeginAnimation(OpacityProperty, null);
+            PageHost.Opacity = 1;
         }
     }
 

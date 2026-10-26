@@ -4,12 +4,10 @@
 > 界面用 WPF 自绘，更新逻辑复用成熟的开源内核，最终打包成**单个 exe**，双击即用。
 
 - 作者：风之翼灵'Blog · <https://www.fungj.com>
-- 版本：1.0.0（Windows 10 19041+ / Windows 11，x64）
+- 版本：1.1.0（Windows 10 19041+ / Windows 11，x64）
 - 许可证：MIT（第三方组件各自遵循其许可证，见 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)）
 
-| 概览 | 驱动与设备 | 软件更新 |
-| --- | --- | --- |
-| ![概览](docs/images/ui-dashboard.png) | ![驱动与设备](docs/images/p-drivers.png) | ![软件更新](docs/images/p-software.png) |
+![DevUp 概览](docs/images/ui-dashboard.png)
 
 ---
 

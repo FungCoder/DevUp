@@ -417,7 +417,11 @@ try {
 
             $names = @()
             if (-not [string]::IsNullOrWhiteSpace($PublishedNames)) {
-                $names = @($PublishedNames -split ',' | ForEach-Object { Get-SafeInfName $_ } | Where-Object { $_ })
+                $requestedNames = @($PublishedNames -split ',')
+                $names = @($requestedNames | ForEach-Object { Get-SafeInfName $_ } | Where-Object { $_ })
+                if ($names.Count -ne $requestedNames.Count) {
+                    Write-Failure '指定的驱动包名无效，未执行导出'
+                }
             }
 
             $results = @()
@@ -470,6 +474,12 @@ try {
         # ---------------- winget 可用更新 ----------------
         'softwareUpdates' {
             $raw = & winget upgrade --accept-source-agreements --disable-interactivity 2>&1 | Out-String
+            $exitCode = $LASTEXITCODE
+            if ($exitCode -ne 0) {
+                $detail = $raw.Trim()
+                if ($detail.Length -gt 500) { $detail = $detail.Substring(0, 500) }
+                Write-Failure "winget 检查更新失败（退出码 $exitCode）：$detail"
+            }
             $rows = @()
             foreach ($line in ($raw -split "`r?`n")) {
                 if ([string]::IsNullOrWhiteSpace($line)) { continue }

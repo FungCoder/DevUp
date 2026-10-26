@@ -20,9 +20,10 @@ public sealed class BackupService
         var dir = Path.Combine(ResolvedRoot(), "全部驱动_" + DateTime.Now.ToString("yyyyMMdd_HHmmss"));
         Directory.CreateDirectory(dir);
 
-        await PsBridge.RunAsync("exportDrivers",
+        var result = await PsBridge.RunAsync("exportDrivers",
             new Dictionary<string, string> { ["BackupDirectory"] = dir },
             elevated: true, ct: ct);
+        ValidateExportResult(result, 1);
 
         return Describe(dir);
     }
@@ -30,19 +31,21 @@ public sealed class BackupService
     /// <summary>备份指定驱动包（oemN.inf）。</summary>
     public async Task<BackupItem> BackupDriversAsync(IEnumerable<string> publishedNames, CancellationToken ct = default)
     {
-        var names = publishedNames.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct().ToList();
+        var names = publishedNames.Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (names.Count == 0) throw new InvalidOperationException("没有可备份的驱动包");
 
         var dir = Path.Combine(ResolvedRoot(), "驱动_" + DateTime.Now.ToString("yyyyMMdd_HHmmss"));
         Directory.CreateDirectory(dir);
 
-        await PsBridge.RunAsync("exportDrivers",
+        var result = await PsBridge.RunAsync("exportDrivers",
             new Dictionary<string, string>
             {
                 ["BackupDirectory"] = dir,
                 ["PublishedNames"] = string.Join(",", names)
             },
             elevated: true, ct: ct);
+        ValidateExportResult(result, names.Count);
 
         return Describe(dir);
     }
@@ -113,6 +116,39 @@ public sealed class BackupService
             catch { }
         }
         return list.OrderByDescending(b => b.CreatedAt).ToList();
+    }
+
+    private static void ValidateExportResult(JsonElement result, int expectedCount)
+    {
+        if (!result.TryGetProperty("data", out var data) ||
+            data.ValueKind != JsonValueKind.Object ||
+            !data.TryGetProperty("results", out var entries) ||
+            entries.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("驱动备份未返回导出结果，无法确认备份是否成功。");
+
+        var failures = new List<string>();
+        var count = 0;
+        foreach (var entry in entries.EnumerateArray())
+        {
+            count++;
+            if (entry.ValueKind != JsonValueKind.Object)
+            {
+                failures.Add("导出结果格式无效");
+                continue;
+            }
+            if (entry.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.True)
+                continue;
+
+            var name = DriverUpdateService.Str(entry, "name");
+            var message = DriverUpdateService.Str(entry, "message");
+            failures.Add($"{name}: {message}");
+        }
+
+        if (failures.Count > 0)
+            throw new InvalidOperationException("驱动备份失败：" + string.Join("；", failures));
+        if (count != expectedCount)
+            throw new InvalidOperationException(
+                $"驱动备份结果不完整：请求 {expectedCount} 项，返回 {count} 项。");
     }
 
     private static BackupItem Describe(string dir)
