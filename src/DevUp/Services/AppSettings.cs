@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace DevUp.Services;
 
 /// <summary>
-/// 用户设置（保存到 %LOCALAPPDATA%\DevUp\settings.json，不需要管理员权限）。
+/// 用户设置（保存到程序目录下的 DevUpData/data/settings.json）。
 /// 目前包含：驱动备份目录、下载目录。
 /// </summary>
 public sealed class AppSettings
@@ -29,23 +29,25 @@ public sealed class AppSettings
     /// <summary>已忽略的软件更新（键：wingetId@可用版本）。</summary>
     public List<string> IgnoredSoftware { get; set; } = new();
 
-    public static string Dir =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DevUp");
+    public static string Dir => Core.PortablePaths.Data;
 
     public static string FilePath => Path.Combine(Dir, "settings.json");
 
     public static string DefaultBackupRoot =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "DevUp", "驱动备份");
+        Path.Combine(Core.PortablePaths.StorageRoot, "backups");
 
     public static string DefaultDownloadRoot =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "DevUp");
+        Path.Combine(Core.PortablePaths.StorageRoot, "downloads");
 
     public static AppSettings Load()
     {
+        var source = File.Exists(FilePath)
+            ? FilePath : Path.Combine(Core.PortablePaths.Root, "data", "settings.json");
+        AppSettings settings;
         try
         {
-            if (!File.Exists(FilePath)) return new AppSettings();
-            var json = File.ReadAllText(FilePath, Encoding.UTF8);
+            if (!File.Exists(source)) return new AppSettings();
+            var json = File.ReadAllText(source, Encoding.UTF8);
             var s = JsonSerializer.Deserialize<AppSettings>(json);
             if (s is null) return new AppSettings();
 
@@ -55,13 +57,25 @@ public sealed class AppSettings
             s.IgnoredSoftware ??= new List<string>();
             if (string.IsNullOrWhiteSpace(s.BackupRoot)) s.BackupRoot = DefaultBackupRoot;
             if (string.IsNullOrWhiteSpace(s.DownloadRoot)) s.DownloadRoot = DefaultDownloadRoot;
+            s.BackupRoot = Path.GetFullPath(s.BackupRoot, Core.PortablePaths.Root);
+            s.DownloadRoot = Path.GetFullPath(s.DownloadRoot, Core.PortablePaths.Root);
+            if (source != FilePath)
+            {
+                if (string.Equals(s.BackupRoot, Path.Combine(Core.PortablePaths.Root, "backups"),
+                        StringComparison.OrdinalIgnoreCase)) s.BackupRoot = DefaultBackupRoot;
+                if (string.Equals(s.DownloadRoot, Path.Combine(Core.PortablePaths.Root, "downloads"),
+                        StringComparison.OrdinalIgnoreCase)) s.DownloadRoot = DefaultDownloadRoot;
+            }
             if (string.IsNullOrWhiteSpace(s.StartupMode)) s.StartupMode = ModeAsk;
-            return s;
+            settings = s;
         }
         catch
         {
             return new AppSettings();
         }
+        // 仅迁移配置文件，不移动或删除旧目录中的其他内容；保存失败必须明确报错。
+        if (source != FilePath) settings.Save();
+        return settings;
     }
 
     public void Save()
@@ -69,27 +83,19 @@ public sealed class AppSettings
         try
         {
             Directory.CreateDirectory(Dir);
-            var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
+            var document = JsonSerializer.SerializeToNode(this)!;
+            document[nameof(BackupRoot)] = Core.PortablePaths.ToStoredPath(BackupRoot);
+            document[nameof(DownloadRoot)] = Core.PortablePaths.ToStoredPath(DownloadRoot);
+            var json = document.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(FilePath, json, new UTF8Encoding(false));
         }
         catch (Exception ex)
         {
-            Core.Ui.Log("保存设置失败: " + ex.Message, "WARN");
+            throw new IOException($"保存设置失败：{FilePath}。{ex.Message}", ex);
         }
     }
 
-    /// <summary>确保目录存在；失败时回退到默认目录。</summary>
-    public static string EnsureDir(string path, string fallback)
-    {
-        try
-        {
-            Directory.CreateDirectory(path);
-            return path;
-        }
-        catch
-        {
-            Directory.CreateDirectory(fallback);
-            return fallback;
-        }
-    }
+    /// <summary>确保指定目录可写，失败时明确报错，不回退到其他目录。</summary>
+    public static string EnsureDir(string path)
+        => Core.PortablePaths.EnsureWritableDirectory(path);
 }

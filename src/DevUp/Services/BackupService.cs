@@ -12,7 +12,7 @@ public sealed class BackupService
     public static string BackupRoot => Ctx.Settings.BackupRoot;
 
     private static string ResolvedRoot()
-        => AppSettings.EnsureDir(BackupRoot, AppSettings.DefaultBackupRoot);
+        => AppSettings.EnsureDir(BackupRoot);
 
     /// <summary>备份全部驱动包（pnputil /export-driver *）。</summary>
     public async Task<BackupItem> BackupAllAsync(CancellationToken ct = default)
@@ -103,7 +103,7 @@ public sealed class BackupService
     public List<BackupItem> ListBackups()
     {
         var list = new List<BackupItem>();
-        var root = ResolvedRoot();
+        var root = Path.GetFullPath(BackupRoot, PortablePaths.Root);
         if (!Directory.Exists(root)) return list;
 
         foreach (var dir in Directory.GetDirectories(root))

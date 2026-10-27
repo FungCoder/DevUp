@@ -133,7 +133,7 @@ public sealed class SoftwareItem : INotifyPropertyChanged
 
     private string? _wingetId;
 
-    /// <summary>winget 能匹配到的包 ID（由 winget upgrade 输出反查得到）。</summary>
+    /// <summary>winget 能匹配到的包 ID（由 winget list 输出反查得到）。</summary>
     public string? WingetId
     {
         get => _wingetId;

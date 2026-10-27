@@ -10,6 +10,42 @@ public static class Scanner
 
     private static void RaiseSoftwareChanged() => SoftwareChanged?.Invoke();
 
+    /// <summary>按真实步骤执行本机清单扫描并报告已完成项。</summary>
+    public static async Task ScanOverviewAsync(
+        IProgress<ProgressInfo> progress, CancellationToken ct)
+    {
+        progress.Report(new ProgressInfo
+        {
+            Status = "1/4 正在扫描设备", Detail = "读取硬件及当前驱动信息"
+        });
+        await ScanDevicesAsync(ct);
+        progress.Report(new ProgressInfo
+        {
+            Status = "2/4 正在读取驱动仓库",
+            Detail = $"已识别 {Ctx.State.Devices.Count} 台设备"
+        });
+        await ScanDriverPackagesAsync(ct);
+        progress.Report(new ProgressInfo
+        {
+            Status = "3/4 正在扫描已安装软件",
+            Detail = $"已读取 {Ctx.State.DriverPackages.Count} 个驱动包"
+        });
+        await ScanSoftwareAsync(ct);
+        progress.Report(new ProgressInfo
+        {
+            Status = "4/4 正在检查软件更新",
+            Detail = $"已读取 {Ctx.State.Software.Count} 个软件；正在连接 winget 源"
+        });
+        await ScanSoftwareUpdatesAsync(ct);
+        progress.Report(new ProgressInfo
+        {
+            Percent = 100, Status = "扫描完成",
+            Detail = $"设备 {Ctx.State.Devices.Count} · 软件 {Ctx.State.Software.Count} · " +
+                $"更新 {Ctx.State.Summary.SoftwareUpdates}",
+            CanCancel = false
+        });
+    }
+
     public static async Task ScanDevicesAsync(CancellationToken ct = default)
     {
         var devices = await Ctx.Devices.ScanAsync(ct);
@@ -36,18 +72,19 @@ public static class Scanner
         };
     }
 
-    public static Task ScanDriverPackagesAsync(CancellationToken ct = default)
+    public static async Task ScanDriverPackagesAsync(CancellationToken ct = default)
     {
-        var packages = Ctx.DriverStore.GetPackages();
+        var packages = await Task.Run(() => Ctx.DriverStore.GetPackages(), ct).WaitAsync(ct);
+        ct.ThrowIfCancellationRequested();
         Ctx.State.DriverPackages.Clear();
         foreach (var p in packages) Ctx.State.DriverPackages.Add(p);
         RefreshSummary();
-        return Task.CompletedTask;
     }
 
     public static async Task ScanSoftwareAsync(CancellationToken ct = default)
     {
-        var registry = SoftwareService.ScanRegistry();
+        var registry = await Task.Run(SoftwareService.ScanRegistry, ct).WaitAsync(ct);
+        ct.ThrowIfCancellationRequested();
         var msix = await Ctx.Software.ScanMsixAsync(ct);
 
         Ctx.State.Software.Clear();

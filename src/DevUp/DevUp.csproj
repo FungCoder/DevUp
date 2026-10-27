@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -10,7 +10,7 @@
 
     <AssemblyName>DevUp</AssemblyName>
     <RootNamespace>DevUp</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <Product>DevUp 驱动与软件更新助手</Product>
     <AssemblyTitle>DevUp</AssemblyTitle>
     <Company>风之翼灵'Blog</Company>
@@ -22,17 +22,17 @@
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
     <UseWindowsForms>false</UseWindowsForms>
 
-    <!-- 发布：单文件、自包含 -->
+    <!-- 发布：单个 exe，使用官方 .NET 8 桌面运行时，不随包释放原生运行时 -->
     <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>true</SelfContained>
+    <SelfContained>false</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
     <DebugType>embedded</DebugType>
     <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="DevUp.PortableTests" />
     <!-- 应用图标（exe 图标由 ApplicationIcon 指定；这里作为 WPF 资源供界面使用） -->
     <Resource Include="Assets\app.ico" />
   </ItemGroup>
@@ -45,12 +45,14 @@
   <ItemGroup>
     <!-- 复用：PowerShell 后端脚本（内嵌，运行时释放） -->
     <EmbeddedResource Include="Scripts\devup.ps1" LogicalName="devup.ps1" />
-    <!-- 复用：PSWindowsUpdate 模块 (MIT)，内嵌后释放到运行时目录 -->
-    <EmbeddedResource Include="..\..\lib\PSWindowsUpdate\**\*">
+    <!-- 仅嵌入 PowerShell 5.1 导入所需文件；NuGet 元数据和帮助文档不参与运行 -->
+    <EmbeddedResource Include="..\..\lib\PSWindowsUpdate\**\*"
+                      Exclude="..\..\lib\PSWindowsUpdate\package\**\*;..\..\lib\PSWindowsUpdate\_rels\**\*;..\..\lib\PSWindowsUpdate\*.xml;..\..\lib\PSWindowsUpdate\*.nuspec;..\..\lib\PSWindowsUpdate\*.tmp">
       <LogicalName>PSWindowsUpdate/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
-    <!-- 复用：MSCatalog 模块 (MIT)，内嵌后释放到运行时目录 -->
-    <EmbeddedResource Include="..\..\lib\MSCatalog\**\*">
+    <!-- MSCatalog 保留两套运行时程序集，只排除 NuGet 打包元数据 -->
+    <EmbeddedResource Include="..\..\lib\MSCatalog\**\*"
+                      Exclude="..\..\lib\MSCatalog\package\**\*;..\..\lib\MSCatalog\_rels\**\*;..\..\lib\MSCatalog\*.xml;..\..\lib\MSCatalog\*.nuspec">
       <LogicalName>MSCatalog/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
   </ItemGroup>

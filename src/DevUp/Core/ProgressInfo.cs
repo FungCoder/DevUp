@@ -6,5 +6,7 @@ public sealed class ProgressInfo
     public double Percent { get; init; } = -1;
     public string? Status { get; init; }
     public string? Detail { get; init; }
+    public string? DetailHint { get; init; }
+    public string? Metric { get; init; }
     public bool CanCancel { get; init; } = true;
 }

@@ -32,18 +32,22 @@
                              IsIndeterminate="True" Visibility="Collapsed" />
             </Grid>
 
-            <Grid Margin="0,8,0,0">
+            <Grid Margin="0,8,0,0" Height="20">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition x:Name="DetailColumn" Width="*" />
+                    <ColumnDefinition x:Name="MetricColumn" Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock x:Name="DetailText" Grid.Column="0" FontSize="12" Foreground="{StaticResource SubTextBrush}"
                            TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"
                            VerticalAlignment="Center" />
-                <TextBlock x:Name="PercentText" Grid.Column="1" FontSize="12.5" FontWeight="SemiBold"
+                <TextBlock x:Name="MetricText" Grid.Column="1" FontSize="12" Foreground="{StaticResource SubTextBrush}"
+                           TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" Margin="0,0,12,0"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+                <TextBlock x:Name="PercentText" Grid.Column="2" FontSize="12.5" FontWeight="SemiBold"
                            Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Right" VerticalAlignment="Center" />
                 <!-- 已用时间单独占右侧一格：与详情文字分开，避免两处互相覆盖导致闪烁 -->
-                <TextBlock x:Name="ElapsedText" Grid.Column="1" FontSize="12" Foreground="{StaticResource SubTextBrush}"
+                <TextBlock x:Name="ElapsedText" Grid.Column="2" FontSize="12" Foreground="{StaticResource SubTextBrush}"
                            HorizontalAlignment="Right" VerticalAlignment="Center" TextWrapping="NoWrap" Visibility="Collapsed" />
             </Grid>
 

@@ -5,7 +5,7 @@ namespace DevUp.Views;
 
 /// <summary>
 /// 启动前的权限选择窗口：让用户决定本次以管理员还是普通权限运行，
-/// 并可记住选择（保存到 %LOCALAPPDATA%\DevUp\settings.json 的 StartupMode）。
+/// 并可记住选择（保存到程序目录下 DevUpData/data/settings.json 的 StartupMode）。
 /// </summary>
 public partial class StartupDialog : Window
 {

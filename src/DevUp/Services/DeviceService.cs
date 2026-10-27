@@ -40,26 +40,30 @@ public sealed class DeviceService
         }
 
         // 复用 Nefarius：原生读取当前驱动包信息（版本 / 厂商 / INF 路径），比 WMI 更快更准
-        foreach (var d in devices)
+        await Task.Run(() =>
         {
-            ct.ThrowIfCancellationRequested();
-            if (!d.IsPresent || string.IsNullOrEmpty(d.InstanceId)) continue;
-            try
+            foreach (var device in devices)
             {
-                var dev = PnPDevice.GetDeviceByInstanceId(d.InstanceId, DeviceLocationFlags.Normal);
-                var meta = dev.GetCurrentDriver();
-                if (meta is null) continue;
-                d.DriverVersion = meta.DriverVersion?.ToString() ?? "";
-                d.DriverProvider = meta.ProviderName ?? "";
-                d.DriverDate = meta.DriverDate == default ? "" : meta.DriverDate.ToString("yyyy-MM-dd");
-                d.DriverInfPath = meta.InfPath ?? "";
+                ct.ThrowIfCancellationRequested();
+                if (!device.IsPresent || string.IsNullOrEmpty(device.InstanceId)) continue;
+                try
+                {
+                    var nativeDevice = PnPDevice.GetDeviceByInstanceId(
+                        device.InstanceId, DeviceLocationFlags.Normal);
+                    var driver = nativeDevice.GetCurrentDriver();
+                    if (driver is null) continue;
+                    device.DriverVersion = driver.DriverVersion?.ToString() ?? "";
+                    device.DriverProvider = driver.ProviderName ?? "";
+                    device.DriverDate = driver.DriverDate == default
+                        ? "" : driver.DriverDate.ToString("yyyy-MM-dd");
+                    device.DriverInfPath = driver.InfPath ?? "";
+                }
+                catch
+                {
+                    // 没有驱动或已移除的设备忽略
+                }
             }
-            catch
-            {
-                // 没有驱动或已移除的设备忽略
-            }
-        }
-
+        }, ct).WaitAsync(ct);
         return devices;
     }
 

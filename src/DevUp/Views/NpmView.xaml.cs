@@ -90,21 +90,25 @@ public partial class NpmView : UserControl
         {
             Ctx.Npm.ResetProbe();
 
-            await Ctx.RunAsync("正在读取 npm 全局包…", async () =>
+            var completed = await Ctx.RunScanAsync("正在读取 npm 全局包…", async (progress, ct) =>
             {
-                _env = await Ctx.Npm.ProbeAsync();
+                progress.Report(new ProgressInfo { Status = "1/3 正在检查 Node.js 环境" });
+                _env = await Ctx.Npm.ProbeAsync(ct);
                 Packages.Clear();
                 if (PackageGrid is not null) PackageGrid.SelectedItem = null;
 
                 if (_env.Available)
                 {
-                    var (list, error) = await Ctx.Npm.GetPackagesAsync(_env);
+                    progress.Report(new ProgressInfo { Status = "2/3 正在读取全局包清单" });
+                    var (list, error) = await Ctx.Npm.GetPackagesAsync(_env, ct);
                     foreach (var package in list) Packages.Add(package);
                     _loadError = error;
 
                     if (checkUpdates && Packages.Count > 0)
                     {
-                        var (checkedOk, checkError) = await Ctx.Npm.CheckOutdatedAsync(_env, Packages);
+                        progress.Report(new ProgressInfo { Status = "3/3 正在检查包更新",
+                            Detail = $"已找到 {Packages.Count} 个全局包" });
+                        var (checkedOk, checkError) = await Ctx.Npm.CheckOutdatedAsync(_env, Packages, ct);
                         if (!checkedOk)
                             _loadError = string.IsNullOrWhiteSpace(_loadError)
                                 ? checkError
@@ -117,7 +121,7 @@ public partial class NpmView : UserControl
                 UpdateSelectionState();
             });
 
-            _loaded = true;
+            _loaded = completed;
         }
         finally
         {
@@ -407,15 +411,16 @@ public partial class NpmView : UserControl
         SetBusy(true);
         try
         {
-            await Ctx.RunAsync("正在检查 npm 包更新…", async () =>
+            var completed = await Ctx.RunScanAsync("正在检查 npm 包更新…", async (_, ct) =>
             {
-                var (ok, error) = await Ctx.Npm.CheckOutdatedAsync(_env, Packages);
+                var (ok, error) = await Ctx.Npm.CheckOutdatedAsync(_env, Packages, ct);
                 _loadError = ok ? "" : error;
                 ApplyFilter();
                 UpdateEnvironment();
                 UpdateSelectionState();
             });
 
+            if (!completed) return;
             if (string.IsNullOrWhiteSpace(_loadError))
             {
                 var count = Packages.Count(p => p.HasUpdate);

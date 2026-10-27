@@ -106,14 +106,19 @@ public sealed class SoftwareService
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            Ui.Log($"读取 MSIX 应用失败: {ex.Message}", "WARN");
+            throw new InvalidOperationException(
+                $"读取 Microsoft Store 应用失败：{ex.Message}", ex);
         }
         return result;
     }
 
-    /// <summary>winget 报告的可用更新。</summary>
+    /// <summary>winget 已识别的软件及其可用更新，保留无更新条目的包 ID。</summary>
     public async Task<List<SoftwareUpdateItem>> GetUpdatesAsync(CancellationToken ct = default)
     {
         var result = new List<SoftwareUpdateItem>();
@@ -355,7 +360,10 @@ public sealed class SoftwareService
         string Hint,
         bool CanRetryAsInstall,
         bool CanOpenInstaller,
-        string Detail);
+        string Detail)
+    {
+        public bool CanRetryDownload { get; init; }
+    }
 
     /// <summary>
     /// 解析 winget 失败原因（错误码来自 AppInstallerErrors.h）。
@@ -369,6 +377,17 @@ public sealed class SoftwareService
 
         var info = raw switch
         {
+            0xFFFFFFFE => new WingetFailureInfo(exitCode, codeText, "更新长时间无进展",
+                "winget 在下载或准备阶段长时间没有可观察到的进展，已停止本次操作。",
+                "请检查网络或代理后重试；若下载源仍不可达，可打开官方下载页手动获取安装包。",
+                CanRetryAsInstall: false, CanOpenInstaller: true, Detail: detail)
+                { CanRetryDownload = true },
+
+            0xFFFFFFFD => new WingetFailureInfo(exitCode, codeText, "安装阶段超时",
+                "安装包已校验或安装器已启动，但长时间没有返回完成结果。",
+                "请先检查软件是否已安装成功，再决定是否重新升级，避免重复运行安装程序。",
+                CanRetryAsInstall: false, CanOpenInstaller: false, Detail: detail),
+
             // 清单里的新版本与已安装版本类型/范围不一致，winget 拒绝升级
             0x8A15008E => new WingetFailureInfo(exitCode, codeText, "winget 无法直接升级",
                 "新版本的安装包与当前已安装的版本不匹配：常见原因是安装范围（所有用户 / 当前用户）" +
@@ -403,7 +422,8 @@ public sealed class SoftwareService
             0x8A150008 or 0x8A15002E => new WingetFailureInfo(exitCode, codeText, "安装包下载失败",
                 "安装包没有下载完整，或下载源在传输过程中断开了连接。",
                 "检查网络后重试，或打开官方安装包手动下载。",
-                CanRetryAsInstall: false, CanOpenInstaller: true, Detail: detail),
+                CanRetryAsInstall: false, CanOpenInstaller: true, Detail: detail)
+                { CanRetryDownload = true },
 
             // 需要管理员权限
             0x8A150019 => new WingetFailureInfo(exitCode, codeText, "需要管理员权限",
@@ -457,225 +477,160 @@ public sealed class SoftwareService
     }
 
     /// <summary>
-    /// 带下载进度的升级：仍然由 winget 负责选择安装器与静默参数（保证准确性），
-    /// 我们只旁路观察 winget 的下载目录（%TEMP%\WinGet）增长量，换算成百分比与速度。
+    /// 升级仍由 winget 负责选择安装器与静默参数。
+    /// 使用隐藏伪终端保留 winget 实时下载计数，正确处理系统传递优化下载。
     /// 升级结束（无论成败）都会清理 winget 留在临时目录里的安装包。
     /// </summary>
     /// <param name="forceVersion">
     /// 传入版本号时改用 <c>winget install --version … --force</c>：绕过“已安装版本与清单不一致”的检查，
     /// 用于 winget upgrade 因安装范围 / 安装器类型不匹配而拒绝升级的软件。
     /// </param>
-    public async Task<(int ExitCode, string Output)> InstallWithProgressAsync(
+    public Task<(int ExitCode, string Output)> InstallWithProgressAsync(
         string packageId, IProgress<ProgressInfo>? progress, CancellationToken ct = default,
         string? forceVersion = null)
     {
-        var tempRoot = Path.Combine(Path.GetTempPath(), "WinGet");
-        // 只统计本次升级对应的包目录。%TEMP%\WinGet 里可能还有别的软件残留的安装包，
-        // 统计整棵目录会让进度忽大忽小，甚至在别的文件增长时误判下载进度。
-        var baseline = PackageDirSize(tempRoot, packageId);
-
-        // 并行解析安装包体积：解析完成前先显示不确定进度，完成后变成百分比。
-        var sizeTask = TryGetInstallerSizeAsync(packageId, ct, forceVersion);
-
-        var psi = new ProcessStartInfo
+        var arguments = new List<string>
         {
-            FileName = "winget",
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WindowStyle = ProcessWindowStyle.Hidden,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = System.Text.Encoding.UTF8,
-            StandardErrorEncoding = System.Text.Encoding.UTF8
+            forceVersion is null ? "upgrade" : "install", "--id", packageId, "--exact",
+            "--accept-source-agreements", "--accept-package-agreements", "--disable-interactivity", "--no-vt"
         };
-        var wingetArgs = forceVersion is null
-            ? new[]
-            {
-                "upgrade", "--id", packageId, "--exact",
-                "--accept-source-agreements", "--accept-package-agreements",
-                "--disable-interactivity"
-            }
-            : new[]
-            {
-                "install", "--id", packageId, "--exact", "--version", forceVersion, "--force",
-                "--accept-source-agreements", "--accept-package-agreements",
-                "--disable-interactivity"
-            };
-        foreach (var a in wingetArgs)
-            psi.ArgumentList.Add(a);
+        if (forceVersion is not null) arguments.AddRange(new[] { "--version", forceVersion, "--force" });
+        return RunWingetWithProgressAsync(packageId, arguments, progress, ct, cleanupInstallerCache: true);
+    }
 
-        using var proc = new Process { StartInfo = psi };
-        try
-        {
-            proc.Start();
-        }
-        catch (System.ComponentModel.Win32Exception ex)
-        {
-            // winget 不在 PATH（通常是 App Installer 未安装或被卸载）
-            throw new InvalidOperationException(
-                "没有找到 winget。请先安装或更新「应用安装程序（App Installer）」，" +
-                "或在 Microsoft Store 搜索并安装。", ex);
-        }
-
+    /// <summary>升级和只下载验证共用同一个实时进度入口，不改变 winget 的下载与安装策略。</summary>
+    internal static async Task<(int ExitCode, string Output)> RunWingetWithProgressAsync(
+        string packageId, IReadOnlyList<string> arguments, IProgress<ProgressInfo>? progress,
+        CancellationToken ct, bool cleanupInstallerCache = false)
+    {
+        ct.ThrowIfCancellationRequested();
+        var clock = Stopwatch.StartNew();
         var output = new System.Text.StringBuilder();
         var markers = new WingetOutputMarkers();
-        proc.OutputDataReceived += (_, e) =>
+        var download = new WingetDownloadProgress();
+        var packageSelected = false;
+
+        void ObserveOutput(string line)
         {
-            if (string.IsNullOrWhiteSpace(e.Data)) return;
-
-            var data = e.Data;
-            lock (output) output.AppendLine(data);
-
-            // winget 的阶段标记比“文件多久没增长”可靠：下载慢、校验哈希、安装器启动前
-            // 都可能出现长时间没有字节增长，不能据此判断已经进入安装阶段。
-            if (IsWingetDownloadLine(data)) markers.DownloadStarted = true;
-            if (IsWingetHashVerifiedLine(data)) markers.HashVerified = true;
-            if (IsWingetInstallLine(data)) markers.InstallStarted = true;
-        };
-        var err = new System.Text.StringBuilder();
-        proc.ErrorDataReceived += (_, e) =>
-        {
-            if (!string.IsNullOrWhiteSpace(e.Data)) lock (err) err.AppendLine(e.Data);
-        };
-        proc.BeginOutputReadLine();
-        proc.BeginErrorReadLine();
-
-        var clock = Stopwatch.StartNew();
-        long downloaded = 0, lastBytes = 0, lastGrowth = 0, lastTick = 0;
-        double speed = 0;
-        long total = 0;
-        var hasTotal = false;
-        var lastStage = -1;
-        var cancelled = false;
-        var code = 0;
-        var text = "";
-
-        try
-        {
-            while (!proc.HasExited)
+            var trimmed = line.Trim();
+            if (trimmed.Length == 1 && "-\\|/".Contains(trimmed, StringComparison.Ordinal)) return;
+            Interlocked.Exchange(ref markers.LastOutputMs, clock.ElapsedMilliseconds);
+            if (line.Contains("[" + packageId + "]", StringComparison.OrdinalIgnoreCase)) packageSelected = true;
+            var isDownloadHeader = packageSelected && IsWingetDownloadLine(line);
+            if (isDownloadHeader)
             {
-                await Task.Delay(300, ct);
-
-                if (sizeTask.IsCompletedSuccessfully && sizeTask.Result > 0)
-                {
-                    total = sizeTask.Result;
-                    hasTotal = true;
-                }
-
-                downloaded = Math.Max(0, PackageDirSize(tempRoot, packageId) - baseline);
-                var now = clock.ElapsedMilliseconds;
-
-                if (downloaded > lastBytes)
-                {
-                    var elapsed = Math.Max(0.05, (now - lastTick) / 1000.0);
-                    var instant = (downloaded - lastBytes) / elapsed;
-                    speed = speed <= 0 ? instant : speed * 0.7 + instant * 0.3;
-                    lastBytes = downloaded;
-                    lastTick = now;
-                    lastGrowth = now;
-                }
-
-                // 0=准备，1=下载，2=校验通过/等待安装器，3=安装。
-                // 只有 winget 明确输出安装阶段标记后才进入 3；下载字节数停滞不再触发安装状态。
-                var stage = markers.InstallStarted ? 3
-                    : markers.HashVerified ? 2
-                    : markers.DownloadStarted || downloaded > 0 ? 1
-                    : 0;
-
-                var percent = stage switch
-                {
-                    3 => -1,
-                    2 => hasTotal && total > 0 ? 99.0 : -1,
-                    1 => hasTotal && total > 0 && downloaded > 0 ? Math.Min(99.0, downloaded * 100.0 / total) : -1,
-                    _ => -1
-                };
-
-                var status = stage switch
-                {
-                    3 => "正在安装安装包…",
-                    2 => "安装包校验通过，正在启动安装…",
-                    1 => "正在下载安装包…",
-                    _ => "正在准备升级…"
-                };
-
-                var stalled = stage == 1 && downloaded > 0 && now - lastGrowth > 5000;
-                var detail = stage switch
-                {
-                    3 => "",
-                    2 => "SHA256 校验通过",
-                    1 => stalled
-                        ? "下载暂时没有进展，正在等待网络…"
-                        : hasTotal && total > 0
-                            ? BuildDetail(downloaded, total, speed)
-                            : downloaded > 0
-                                ? BuildDetail(downloaded, null, speed)
-                                : "winget 正在通过系统下载服务传输安装包…",
-                    _ => ""
-                };
-
-                if (stage != lastStage)
-                {
-                    lastStage = stage;
-                    Ui.Log($"winget {packageId} 阶段：{status}（已下载 {FmtBytes(downloaded)}" +
-                           $"{(hasTotal ? " / " + FmtBytes(total) : "")}）");
-                }
-
-                progress?.Report(new ProgressInfo
-                {
-                    Percent = percent,
-                    Status = status,
-                    Detail = detail,
-                    CanCancel = true
-                });
+                markers.DownloadStarted = true;
+                markers.HashVerified = false;
+                markers.InstallStarted = false;
+                download.Reset(clock.ElapsedMilliseconds);
             }
-
-            proc.WaitForExit();
-            code = proc.ExitCode;
-            lock (output) text = output.ToString();
-            lock (err) text += err.ToString();
-        }
-        catch (OperationCanceledException)
-        {
-            cancelled = true;
-            code = -1;
-            lock (output) text = output.ToString();
-            lock (err) text += err.ToString();
-            Ui.Log($"winget {packageId} 升级已取消");
-        }
-        finally
-        {
-            if (!proc.HasExited)
+            var isProgress = !isDownloadHeader && markers.DownloadStarted && !markers.HashVerified && !markers.InstallStarted &&
+                download.Observe(line, clock.ElapsedMilliseconds);
+            if (packageSelected && IsWingetHashVerifiedLine(line)) markers.HashVerified = true;
+            if (packageSelected && IsWingetInstallLine(line)) markers.InstallStarted = true;
+            if (!isProgress)
             {
-                try { proc.Kill(entireProcessTree: true); } catch { }
-                try { proc.WaitForExit(5000); } catch { }
+                lock (output)
+                {
+                    output.AppendLine(line);
+                    if (output.Length > 128 * 1024) output.Remove(0, output.Length - 64 * 1024);
+                }
             }
-
-            // 无论成功、失败还是取消，都要清理 winget 留下的临时安装包
-            CleanupWingetCache(packageId);
         }
 
-        if (cancelled)
+        progress?.Report(new ProgressInfo { Status = "正在准备升级…", Detail = "正在连接软件源…" });
+        PseudoConsoleProcess session;
+        try { session = PseudoConsoleProcess.Start("winget.exe", arguments, ObserveOutput); }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode is 2 or 3)
         {
+            throw new InvalidOperationException("没有找到 winget，请安装或更新系统的「应用安装程序」。", ex);
+        }
+        using (session)
+        {
+            var process = session.Process;
+            var lastStage = -1;
+            var cancelled = false;
+            var code = 0;
+            var text = "";
+            var failure = "";
+            try
+            {
+                while (!process.HasExited)
+                {
+                    session.ThrowIfOutputFailed();
+                    await Task.Delay(250, ct);
+                    var now = clock.ElapsedMilliseconds;
+                    var stage = markers.InstallStarted ? 3 : markers.HashVerified ? 2 : markers.DownloadStarted ? 1 : 0;
+                    var idle = now - Interlocked.Read(ref markers.LastOutputMs);
+                    if (idle > (stage >= 2 ? TimeSpan.FromMinutes(30) : TimeSpan.FromMinutes(5)).TotalMilliseconds)
+                    {
+                        code = stage >= 2 ? -3 : -2;
+                        throw new TimeoutException(stage >= 2 ? "安装阶段连续 30 分钟没有进展。" : "下载或准备阶段连续 5 分钟没有进展，请检查网络后重试。");
+                    }
+                    var transfer = download.GetProgress(now, stage == 1 && idle > 30000, completed: stage >= 2);
+                    var status = stage switch
+                    {
+                        3 => "正在运行安装程序…",
+                        2 => "安装包校验通过，正在准备安装…",
+                        1 => transfer.Status!,
+                        _ => "正在准备升级…"
+                    };
+                    if (stage != lastStage)
+                    {
+                        lastStage = stage;
+                        Ui.Log($"winget {packageId} 阶段：{status}" +
+                            (download.HasDownloadData ? $"（{transfer.Metric}）" : ""));
+                    }
+                    progress?.Report(stage == 1 ? transfer : new ProgressInfo
+                    {
+                        Percent = stage == 2 ? 100 : -1,
+                        Status = status,
+                        Detail = stage == 3 ? "安装中" : stage == 2 ? "SHA256 校验通过" : "正在连接软件源…",
+                        Metric = stage < 2 ? null : download.HasDownloadData ? transfer.Metric :
+                            markers.DownloadStarted ? "下载已完成" : "使用已缓存安装包",
+                        CanCancel = true
+                    });
+                }
+                await session.CompleteOutputAsync();
+                code = process.ExitCode;
+            }
+            catch (TimeoutException ex)
+            {
+                if (code == 0) code = -2;
+                failure = ex.Message;
+                Ui.Log($"winget {packageId} 超时：{ex.Message}", "ERROR");
+            }
+            catch (OperationCanceledException)
+            {
+                cancelled = true;
+                code = -1;
+                Ui.Log($"winget {packageId} 已取消");
+            }
+            finally
+            {
+                try
+                {
+                    if (!process.HasExited) await session.StopAsync();
+                    await session.CompleteOutputAsync();
+                }
+                finally
+                {
+                    if (cleanupInstallerCache) CleanupWingetCache(packageId);
+                    lock (output) text = output.ToString().Trim();
+                }
+            }
+            if (failure.Length > 0) text += Environment.NewLine + failure;
+            if (cancelled) throw new OperationCanceledException("操作已取消", ct);
             progress?.Report(new ProgressInfo
             {
-                Percent = -1,
-                Status = "已取消",
-                Detail = "本次升级已停止，临时安装包已清理",
+                Percent = code == 0 ? 100 : -1, Status = code == 0 ? "操作完成" : "操作未成功",
+                Metric = download.HasDownloadData ? download.GetProgress(clock.ElapsedMilliseconds, false, code == 0).Metric : null,
                 CanCancel = false
             });
-            throw new OperationCanceledException("升级已取消");
+            return (code, text);
         }
-
-        progress?.Report(new ProgressInfo
-        {
-            Percent = 100,
-            Status = code == 0 ? "安装完成" : "安装未成功",
-            Detail = "",
-            CanCancel = false
-        });
-
-        return (code, text.Trim());
     }
+
 
     /// <summary>清理 winget 为某个包下载的临时安装包（%TEMP%\WinGet\&lt;id&gt;.&lt;version&gt;）。</summary>
     public static void CleanupWingetCache(string packageId)
@@ -697,48 +652,13 @@ public sealed class SoftwareService
         catch { }
     }
 
-    private static long DirSize(string root)
-    {
-        try
-        {
-            if (!Directory.Exists(root)) return 0;
-            long sum = 0;
-            foreach (var f in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
-            {
-                try { sum += new FileInfo(f).Length; } catch { }
-            }
-            return sum;
-        }
-        catch { return 0; }
-    }
-
-    /// <summary>
-    /// 只统计 winget 为指定包创建的目录（%TEMP%\WinGet\&lt;id&gt;.&lt;version&gt;）。
-    /// 不统计整个 WinGet 目录，避免其他软件残留的安装包影响本次进度。
-    /// </summary>
-    private static long PackageDirSize(string root, string packageId)
-    {
-        try
-        {
-            if (!Directory.Exists(root)) return 0;
-            long sum = 0;
-            foreach (var dir in Directory.EnumerateDirectories(root))
-            {
-                var name = Path.GetFileName(dir);
-                if (!name.StartsWith(packageId + ".", StringComparison.OrdinalIgnoreCase)) continue;
-                sum += DirSize(dir);
-            }
-            return sum;
-        }
-        catch { return 0; }
-    }
-
     /// <summary>winget 输出里的阶段标记；由输出线程写入、进度循环读取。</summary>
     private sealed class WingetOutputMarkers
     {
         public volatile bool DownloadStarted;
         public volatile bool HashVerified;
         public volatile bool InstallStarted;
+        public long LastOutputMs;
     }
 
     private static bool IsWingetDownloadLine(string line)
@@ -764,33 +684,15 @@ public sealed class SoftwareService
         return line.Contains("正在启动程序包安装", StringComparison.Ordinal)
                || line.Contains("正在启动包安装程序", StringComparison.Ordinal)
                || line.Contains("正在启动安装程序", StringComparison.Ordinal)
-               || line.Contains("正在安装程序包", StringComparison.Ordinal)
                || lower.Contains("starting package install", StringComparison.Ordinal)
-               || lower.Contains("starting installer", StringComparison.Ordinal)
-               || lower.Contains("starting installation", StringComparison.Ordinal);
-    }
-
-    /// <summary>用 HEAD 请求获取安装包大小（用于把下载量换算成百分比）。</summary>
-    private async Task<long> TryGetInstallerSizeAsync(string packageId, CancellationToken ct, string? version = null)
-    {
-        try
-        {
-            var url = await ResolveInstallerUrlAsync(packageId, version, ct);
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("DevUp/1.0");
-            using var req = new HttpRequestMessage(HttpMethod.Head, url);
-            using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (!resp.IsSuccessStatusCode) return 0;
-            return resp.Content.Headers.ContentLength ?? 0;
-        }
-        catch { return 0; }
+               || lower.Contains("starting installer", StringComparison.Ordinal);
     }
 
     /// <summary>下载安装包到用户指定目录（复用 winget download）。</summary>
     public async Task<(int ExitCode, string Output, string Directory)> DownloadAsync(
         string packageId, CancellationToken ct = default)
     {
-        var dir = AppSettings.EnsureDir(Ctx.Settings.DownloadRoot, AppSettings.DefaultDownloadRoot);
+        var dir = AppSettings.EnsureDir(Ctx.Settings.DownloadRoot);
         var args = new Dictionary<string, string>
         {
             ["PackageId"] = packageId,
@@ -817,7 +719,17 @@ public sealed class SoftwareService
         var args = new Dictionary<string, string> { ["PackageId"] = packageId };
         if (!string.IsNullOrWhiteSpace(version)) args["Version"] = version!;
 
-        var json = await PsBridge.RunAsync("installerUrl", args, elevated: false, ct: ct);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(90));
+        JsonElement json;
+        try
+        {
+            json = await PsBridge.RunAsync("installerUrl", args, elevated: false, ct: timeout.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException("查询安装包地址超过 90 秒，请检查网络或 winget 源后重试。");
+        }
 
         if (json.TryGetProperty("data", out var data) && data.TryGetProperty("urls", out var arr))
         {
@@ -837,24 +749,80 @@ public sealed class SoftwareService
         string packageId, string displayName, string version,
         IProgress<ProgressInfo>? progress, CancellationToken ct = default)
     {
-        progress?.Report(new ProgressInfo { Percent = -1, Status = "正在解析安装包地址…", Detail = displayName, CanCancel = false });
+        progress?.Report(new ProgressInfo { Percent = -1, Status = "正在解析安装包地址…", Detail = displayName });
         var url = await ResolveInstallerUrlAsync(packageId, version, ct);
 
-        var dir = AppSettings.EnsureDir(Ctx.Settings.DownloadRoot, AppSettings.DefaultDownloadRoot);
+        var dir = AppSettings.EnsureDir(Ctx.Settings.DownloadRoot);
         var ext = Path.GetExtension(new Uri(url).AbsolutePath);
         if (string.IsNullOrWhiteSpace(ext)) ext = ".exe";
 
         var baseName = SafeFileName($"{displayName}_{version}");
         var target = UniquePath(Path.Combine(dir, baseName + ext));
 
-        progress?.Report(new ProgressInfo { Percent = 0, Status = "正在下载安装包…", Detail = Path.GetFileName(target), CanCancel = true });
+        await DownloadWithRetryAsync(url, target, progress, ct);
+        return target;
+    }
 
-        using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("DevUp/1.0");
+    private static async Task DownloadWithRetryAsync(
+        string url, string target, IProgress<ProgressInfo>? progress, CancellationToken ct)
+    {
+        const int maxAttempts = 3;
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("DevUp/1.1");
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(new ProgressInfo
+            {
+                Status = "正在连接下载源…",
+                Detail = $"第 {attempt}/{maxAttempts} 次 · {Path.GetFileName(target)}"
+            });
+            try
+            {
+                await DownloadOnceAsync(http, url, target, attempt, maxAttempts, progress, ct);
+                return;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TimeoutException or OperationCanceledException)
+            {
+                if (!IsTransientDownloadError(ex))
+                    throw new InvalidOperationException($"下载源拒绝了请求：{ex.Message}", ex);
 
+                Ui.Log($"安装包下载第 {attempt} 次失败：{ex.Message}", "WARN");
+                if (attempt == maxAttempts)
+                    throw new InvalidOperationException(
+                        $"安装包下载失败，已自动重试 {maxAttempts} 次。请检查网络或代理后重试。\n{ex.Message}", ex);
+
+                progress?.Report(new ProgressInfo
+                {
+                    Status = "下载中断，正在重试…",
+                    Detail = $"第 {attempt}/{maxAttempts} 次失败：{ex.Message}"
+                });
+                await Task.Delay(TimeSpan.FromSeconds(attempt * 2), ct);
+            }
+        }
+
+        throw new InvalidOperationException("安装包下载未完成。");
+    }
+
+    private static bool IsTransientDownloadError(Exception error)
+    {
+        if (error is TimeoutException or OperationCanceledException) return true;
+        if (error is not HttpRequestException httpError) return false;
+        if (!httpError.StatusCode.HasValue) return true;
+        var status = (int)httpError.StatusCode.Value;
+        return status is 408 or 429 or >= 500;
+    }
+
+    private static async Task DownloadOnceAsync(
+        HttpClient http, string url, string target, int attempt, int maxAttempts,
+        IProgress<ProgressInfo>? progress, CancellationToken ct)
+    {
         using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
-
         var total = response.Content.Headers.ContentLength;
         await using var source = await response.Content.ReadAsStreamAsync(ct);
 
@@ -862,32 +830,56 @@ public sealed class SoftwareService
         try
         {
             dest = new FileStream(target, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true);
-
             var buffer = new byte[81920];
             long received = 0;
             var clock = Stopwatch.StartNew();
             var lastReportMs = -1000L;
             var speed = 0d;
-            // 速度按最近 3 秒的滑动窗口计算：慢速网络下一个 80 KB 分块可能几秒才到，
-            // 用“距上次回调这段时间”的瞬时值会让速度忽高忽低，剩余时间随之反复消失/出现。
             var samples = new Queue<(long Ms, long Bytes)>();
             samples.Enqueue((0L, 0L));
 
             while (true)
             {
-                var read = await source.ReadAsync(buffer, ct);
+                using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                readTimeout.CancelAfter(TimeSpan.FromSeconds(45));
+                int read;
+                try
+                {
+                    var readTask = source.ReadAsync(buffer, readTimeout.Token).AsTask();
+                    var warningTask = Task.Delay(TimeSpan.FromSeconds(10), readTimeout.Token);
+                    if (await Task.WhenAny(readTask, warningTask) == warningTask &&
+                        !ct.IsCancellationRequested)
+                    {
+                        speed = 0;
+                        samples.Clear();
+                        samples.Enqueue((clock.ElapsedMilliseconds, received));
+                        progress?.Report(new ProgressInfo
+                        {
+                            Percent = total is > 0 ? Math.Min(99, received * 100.0 / total.Value) : -1,
+                            Status = "下载暂停，等待网络响应…",
+                            Detail = $"第 {attempt}/{maxAttempts} 次 · 已收到 {FmtBytes(received)}"
+                        });
+                    }
+                    read = await readTask;
+                    readTimeout.Cancel();
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    throw new TimeoutException("45 秒未收到下载数据。");
+                }
+                catch (IOException ex)
+                {
+                    throw new HttpRequestException("下载连接中断。", ex);
+                }
                 if (read <= 0) break;
 
                 await dest.WriteAsync(buffer.AsMemory(0, read), ct);
                 received += read;
-
                 var nowMs = clock.ElapsedMilliseconds;
                 samples.Enqueue((nowMs, received));
                 while (samples.Count > 2 && nowMs - samples.Peek().Ms > 3000) samples.Dequeue();
-
-                // 只在确实收到新数据、且距上次刷新 ≥300ms 时更新界面：空刷新会把速度拉到 0
                 var due = nowMs - lastReportMs >= 300;
-                var final = total.HasValue && received >= total.Value;
+                var final = total is > 0 && received >= total.Value;
                 if (!due && !final) continue;
 
                 var oldest = samples.Peek();
@@ -897,26 +889,21 @@ public sealed class SoftwareService
                     var measured = (received - oldest.Bytes) * 1000.0 / spanMs;
                     speed = speed <= 0 ? measured : speed * 0.6 + measured * 0.4;
                 }
-
                 lastReportMs = nowMs;
-
-                var percent = total is > 0 ? received * 100.0 / total.Value : -1;
                 progress?.Report(new ProgressInfo
                 {
-                    Percent = percent,
+                    Percent = total is > 0 ? Math.Min(99, received * 100.0 / total.Value) : -1,
                     Status = "正在下载安装包…",
-                    Detail = BuildDetail(received, total, speed),
-                    CanCancel = true
+                    Detail = $"第 {attempt}/{maxAttempts} 次 · {BuildDetail(received, total, speed)}"
                 });
             }
 
             await dest.FlushAsync(ct);
             dest.Dispose();
             dest = null;
-
-            // 服务器声明了长度就必须收全，避免把半截文件当成“下载完成”
             if (total is > 0 && received != total.Value)
-                throw new IOException($"安装包下载不完整：应为 {FmtBytes(total.Value)}，实际收到 {FmtBytes(received)}。");
+                throw new HttpRequestException(
+                    $"安装包下载不完整：应为 {FmtBytes(total.Value)}，实际收到 {FmtBytes(received)}。");
 
             progress?.Report(new ProgressInfo
             {
@@ -925,8 +912,6 @@ public sealed class SoftwareService
                 Detail = $"{Path.GetFileName(target)} · {FmtBytes(received)}",
                 CanCancel = false
             });
-
-            return target;
         }
         catch
         {
@@ -990,8 +975,8 @@ public sealed class SoftwareService
     }
 
     /// <summary>
-    /// 把 winget 更新项关联到本机已安装条目（名称 + 版本双重匹配）。
-    /// 返回无法关联的更新项（会作为“仅 winget 源”条目补充展示，保证每条更新都可执行）。
+    /// 把 winget 软件关联到本机已安装条目（名称 + 版本双重匹配），无更新时也保留包 ID。
+    /// 返回无法关联的可更新项，作为“仅 winget 源”条目补充展示。
     /// </summary>
     public static List<SoftwareItem> Correlate(IList<SoftwareItem> inventory, IList<SoftwareUpdateItem> updates)
     {
@@ -1003,6 +988,7 @@ public sealed class SoftwareService
             var match = FindMatch(inventory, update, used);
             if (match is null)
             {
+                if (string.IsNullOrWhiteSpace(update.AvailableVersion)) continue;
                 extra.Add(new SoftwareItem
                 {
                     DisplayName = update.Name,

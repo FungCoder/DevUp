@@ -193,7 +193,7 @@ public partial class SoftwareView : UserControl
         {
             DetailBadge.Background = B("#EAF8EF");
             DetailBadgeText.Foreground = B("#15803D");
-            DetailBadgeText.Text = "已是最新";
+            DetailBadgeText.Text = "无可用更新";
         }
         else
         {
@@ -437,12 +437,26 @@ public partial class SoftwareView : UserControl
         var version = item.AvailableVersion ?? item.DisplayVersion;
         var target = "";
 
-        var done = ProgressDialog.Run("正在下载安装包", item.DisplayName,
-            async (progress, ct) =>
-            {
-                target = await Ctx.Software.DownloadInstallerAsync(
-                    item.WingetId!, item.DisplayName, version, progress, ct);
-            });
+        bool done;
+        try
+        {
+            done = ProgressDialog.Run("正在下载安装包", item.DisplayName,
+                async (progress, ct) =>
+                {
+                    target = await Ctx.Software.DownloadInstallerAsync(
+                        item.WingetId!, item.DisplayName, version, progress, ct);
+                });
+        }
+        catch (OperationCanceledException)
+        {
+            return Task.FromResult<string?>(null);
+        }
+        catch (Exception ex)
+        {
+            Ui.Log($"安装包下载失败（{item.WingetId}）：{ex}", "ERROR");
+            Ui.Warn("安装包下载失败", ex.Message);
+            return Task.FromResult<string?>(null);
+        }
 
         if (!done || string.IsNullOrEmpty(target)) return Task.FromResult<string?>(null);
 
@@ -527,23 +541,24 @@ public partial class SoftwareView : UserControl
     // ---------------- 刷新 / 检查 / 升级 ----------------
 
     private async void BtnRefresh_Click(object sender, RoutedEventArgs e)
-        => await Ctx.RunAsync("正在刷新已安装软件…", async () =>
-        {
-            await Scanner.ScanSoftwareAsync();
-            ApplyFilter();
-            await LoadDetailsAsync();
-        });
+    {
+        if (!await Ctx.RunScanAsync("正在刷新已安装软件…",
+            async (_, ct) => await Scanner.ScanSoftwareAsync(ct))) return;
+        ApplyFilter();
+        await LoadDetailsAsync();
+    }
 
     private async void BtnCheck_Click(object sender, RoutedEventArgs e)
-        => await Ctx.RunAsync("正在通过 winget 检查软件更新…", async () =>
-        {
-            await Scanner.ScanSoftwareUpdatesAsync();
-            ApplyFilter();
-            await LoadDetailsAsync();
-            var ignored = Ctx.State.Software.Count(s => s.Ignored);
-            Ui.Info("检查完成", $"发现 {Ctx.State.Summary.SoftwareUpdates} 个可更新的软件。" +
-                                 (ignored > 0 ? $"\n另有 {ignored} 个更新已忽略，可在筛选「已忽略」中查看并恢复。" : ""));
-        });
+    {
+        if (!await Ctx.RunScanAsync("正在通过 winget 检查软件更新…",
+            async (_, ct) => await Scanner.ScanSoftwareUpdatesAsync(ct))) return;
+
+        ApplyFilter();
+        await LoadDetailsAsync();
+        var ignored = Ctx.State.Software.Count(s => s.Ignored);
+        Ui.Info("检查完成", $"发现 {Ctx.State.Summary.SoftwareUpdates} 个可更新的软件。" +
+                             (ignored > 0 ? $"\n另有 {ignored} 个更新已忽略，可在筛选「已忽略」中查看并恢复。" : ""));
+    }
 
     private void BtnIgnoreThis_Click(object sender, RoutedEventArgs e)
     {
@@ -606,7 +621,8 @@ public partial class SoftwareView : UserControl
             completed = ProgressDialog.Run("正在升级软件", item.DisplayName,
                 async (progress, ct) =>
                 {
-                    (code, output) = await Ctx.Software.InstallWithProgressAsync(item.WingetId!, progress, ct);
+                    (code, output) = await Ctx.Software.InstallWithProgressAsync(
+                        item.WingetId!, progress, ct);
                 });
         }
         catch (OperationCanceledException)
@@ -641,6 +657,8 @@ public partial class SoftwareView : UserControl
     {
         var info = SoftwareService.ExplainFailure(code, output);
         Ui.Log($"升级失败（{item.DisplayName} / {item.WingetId}）：{info.CodeText} {info.Detail}", "ERROR");
+
+        if (await OfferDownloadRetryAsync(item, info, () => UpgradeOneAsync(item))) return;
 
         // 先刷新列表：即使升级没有完成，也要把界面上可能残留的旧状态更新掉
         await RefreshAsync();
@@ -678,6 +696,19 @@ public partial class SoftwareView : UserControl
         Ui.Warn("升级未完成", text);
     }
 
+    private async Task<bool> OfferDownloadRetryAsync(
+        SoftwareItem item, SoftwareService.WingetFailureInfo info, Func<Task> retry)
+    {
+        if (!info.CanRetryDownload) return false;
+
+        var detail = string.IsNullOrWhiteSpace(info.Detail) ? "" : "\n\n" + info.Detail;
+        var choice = Ui.Ask(info.Title, info.Reason + detail + "\n\n" + info.Hint,
+            "重试升级", "打开下载页");
+        if (choice == DialogChoice.Ok) await retry();
+        else if (choice == DialogChoice.Extra) await OpenInstallerAsync(item);
+        return true;
+    }
+
     /// <summary>winget upgrade 拒绝升级时，改用 install --force 直接覆盖安装新版本。</summary>
     private async Task ForceInstallAsync(SoftwareItem item)
     {
@@ -701,8 +732,19 @@ public partial class SoftwareView : UserControl
             return;
         }
 
+        if (!completed)
+        {
+            await RefreshAsync();
+            return;
+        }
+
+        if (code != 0)
+        {
+            var retryInfo = SoftwareService.ExplainFailure(code, output);
+            if (await OfferDownloadRetryAsync(item, retryInfo, () => ForceInstallAsync(item))) return;
+        }
+
         await RefreshAsync();
-        if (!completed) return;
 
         if (code == 0)
         {
@@ -799,14 +841,17 @@ public partial class SoftwareView : UserControl
                             progress.Report(new ProgressInfo
                             {
                                 Percent = p.Percent >= 0 ? index * share + p.Percent * share / 100.0 : -1,
-                                Status = $"({index + 1}/{pending.Count}) {p.Status}",
-                                Detail = string.IsNullOrEmpty(p.Detail) ? item.DisplayName : $"{item.DisplayName} · {p.Detail}",
+                                Status = $"({index + 1}/{pending.Count}) {item.DisplayName} · {p.Status}",
+                                Detail = p.Detail,
+                                DetailHint = p.DetailHint,
+                                Metric = p.Metric,
                                 CanCancel = true
                             }));
 
                         try
                         {
-                            var (code, output) = await Ctx.Software.InstallWithProgressAsync(item.WingetId!, scoped, ct);
+                            var (code, output) = await Ctx.Software.InstallWithProgressAsync(
+                                item.WingetId!, scoped, ct);
                             if (code == 0) ok++;
                             else
                             {

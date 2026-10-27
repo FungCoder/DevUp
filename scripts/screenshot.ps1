@@ -1,5 +1,5 @@
 ﻿param(
-    [string]$Exe = 'E:\Develop Projects\DevUp\build\publish\DevUp.exe',
+    [string]$Exe = 'E:\Develop Projects\DevUp\build\single-file\DevUp.exe',
     [int]$WaitSeconds = 14,
     [string]$Out = 'E:\Develop Projects\DevUp\build\ui.png',
     [string]$Page = '',

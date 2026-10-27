@@ -128,6 +128,7 @@ public partial class ToolsView : UserControl
                     ? "JSON 文件 (*.json)|*.json|所有文件 (*.*)|*.*"
                     : "HTML 文件 (*.html)|*.html|所有文件 (*.*)|*.*",
                 AddExtension = true,
+                InitialDirectory = Ctx.Settings.BackupRoot,
                 OverwritePrompt = true
             };
             if (dialog.ShowDialog() != true) return;
@@ -146,13 +147,13 @@ public partial class ToolsView : UserControl
 
     private void BtnOpenBackup_Click(object sender, RoutedEventArgs e)
     {
-        var dir = AppSettings.EnsureDir(Ctx.Settings.BackupRoot, AppSettings.DefaultBackupRoot);
+        var dir = AppSettings.EnsureDir(Ctx.Settings.BackupRoot);
         Ui.OpenInExplorer(dir);
     }
 
     private void BtnOpenDownload_Click(object sender, RoutedEventArgs e)
     {
-        var dir = AppSettings.EnsureDir(Ctx.Settings.DownloadRoot, AppSettings.DefaultDownloadRoot);
+        var dir = AppSettings.EnsureDir(Ctx.Settings.DownloadRoot);
         Ui.OpenInExplorer(dir);
     }
 
@@ -161,7 +162,7 @@ public partial class ToolsView : UserControl
         var picked = PickFolder("选择驱动备份目录", Ctx.Settings.BackupRoot);
         if (picked is null) return;
 
-        Ctx.Settings.BackupRoot = picked;
+        Ctx.Settings.BackupRoot = AppSettings.EnsureDir(picked);
         Ctx.Settings.Save();
         UpdatePaths();
         RefreshBackups();
@@ -173,7 +174,7 @@ public partial class ToolsView : UserControl
         var picked = PickFolder("选择下载目录", Ctx.Settings.DownloadRoot);
         if (picked is null) return;
 
-        Ctx.Settings.DownloadRoot = picked;
+        Ctx.Settings.DownloadRoot = AppSettings.EnsureDir(picked);
         Ctx.Settings.Save();
         UpdatePaths();
         Ui.Log("下载目录已改为 " + picked);

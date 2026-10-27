@@ -12,6 +12,16 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        try
+        {
+            PortablePaths.Initialize();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "无法初始化便携目录", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+            return;
+        }
         base.OnStartup(e);
 
         // 自提升子进程（驱动安装 / 还原点）走无界面模式

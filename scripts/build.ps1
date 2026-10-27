@@ -1,4 +1,4 @@
-﻿# 一键构建 DevUp（单文件、自包含、win-x64）
+﻿# 一键构建 DevUp（单文件、依赖官方 .NET 8 桌面运行时、win-x64）
 # 用法： powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 $ErrorActionPreference = 'Stop'
 
@@ -27,12 +27,18 @@ if ($errors -and $errors.Count) {
 }
 
 Write-Host '==> 发布' -ForegroundColor Cyan
-& $dotnet publish 'src\DevUp\DevUp.csproj' -c Release -r win-x64 --self-contained true `
-    -p:PublishSingleFile=true -o 'build\publish'
+& $dotnet publish 'src\DevUp\DevUp.csproj' -c Release -r win-x64 --self-contained false `
+    -p:PublishSingleFile=true -o 'build\single-file'
 if ($LASTEXITCODE -ne 0) { throw '发布失败' }
 
-$exe = Resolve-Path 'build\publish\DevUp.exe'
+$files = @(Get-ChildItem 'build\single-file' -File)
+if ($files.Count -ne 1 -or $files[0].Name -ne 'DevUp.exe') {
+    throw '发布目录包含多余文件，未满足单文件分发要求。'
+}
+
+$exe = Resolve-Path 'build\single-file\DevUp.exe'
 $size = [math]::Round((Get-Item $exe).Length / 1MB, 1)
 Write-Host ''
 Write-Host "输出：$exe" -ForegroundColor Green
 Write-Host "大小：$size MB" -ForegroundColor Green
+Write-Host '仅分发 DevUp.exe；运行需要官方 .NET 8 Desktop Runtime（x64）。' -ForegroundColor Green

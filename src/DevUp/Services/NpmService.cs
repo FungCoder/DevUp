@@ -106,6 +106,10 @@ public sealed class NpmService
             var (code, output) = await RunAsync(fileName, new[] { arg }, TimeSpan.FromSeconds(15), ct);
             return code == 0 ? FirstVersion(output) ?? "" : "";
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch
         {
             return "";

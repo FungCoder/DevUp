@@ -9,11 +9,9 @@ namespace DevUp.Core;
 public static class Ui
 {
     /// <summary>
-    /// 日志目录放在用户目录下：普通用户没有 %ProgramData%\DevUp 的写权限，
-    /// 写到那里会静默失败，导致用户反馈问题时拿不到日志。
+    /// 日志随程序保存，便于整体移动和删除。
     /// </summary>
-    public static string LogDir { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DevUp", "logs");
+    public static string LogDir => PortablePaths.Logs;
 
     public static event Action<string, string>? Logged;   // (level, message)
 

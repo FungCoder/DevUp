@@ -54,6 +54,25 @@ function Write-Failure {
     exit 1
 }
 
+function ConvertFrom-WingetList {
+    param([string]$Text)
+
+    # 用包 ID 锚定列，兼容中文名及没有可用更新、来源列的情况。
+    $pattern = '^\s*(?<name>.+?)\s+(?<id>[A-Za-z0-9][A-Za-z0-9._+\-]*\.[A-Za-z0-9._+\-]+)\s+(?<installed>[vV]?\d\S*|Unknown|未知)(?:\s+(?<available>\S+))?(?:\s+winget)?\s*$'
+    foreach ($line in ($Text -split "`r?`n")) {
+        if ($line -notmatch $pattern) { continue }
+        $available = $Matches['available']
+        if ($available -eq 'winget') { $available = '' }
+        [pscustomobject]@{
+            name             = $Matches['name'].Trim()
+            id               = $Matches['id']
+            installedVersion = $Matches['installed']
+            availableVersion = [string]$available
+            source           = 'winget'
+        }
+    }
+}
+
 function Import-WuModule {
     if (-not $ModulePath -or -not (Test-Path $ModulePath)) {
         Write-Failure 'PSWindowsUpdate 模块缺失：请检查运行时目录中的 PSWindowsUpdate'
@@ -471,41 +490,16 @@ try {
             Write-Result @{ results = @($results); installed = $okCount; total = $infs.Count }
         }
 
-        # ---------------- winget 可用更新 ----------------
+        # ---------------- winget 已匹配软件与可用更新 ----------------
         'softwareUpdates' {
-            $raw = & winget upgrade --accept-source-agreements --disable-interactivity 2>&1 | Out-String
+            $raw = & winget list --source winget --accept-source-agreements --disable-interactivity 2>&1 | Out-String
             $exitCode = $LASTEXITCODE
             if ($exitCode -ne 0) {
                 $detail = $raw.Trim()
                 if ($detail.Length -gt 500) { $detail = $detail.Substring(0, 500) }
                 Write-Failure "winget 检查更新失败（退出码 $exitCode）：$detail"
             }
-            $rows = @()
-            foreach ($line in ($raw -split "`r?`n")) {
-                if ([string]::IsNullOrWhiteSpace($line)) { continue }
-                $tokens = @($line.Trim() -split '\s+')
-                if ($tokens.Count -lt 5) { continue }
-
-                # 表格结构: 名称 | ID | 已安装版本 | 可用版本 | 源
-                # 列宽溢出时相邻字段可能只隔一个空格，因此从右往左锚定最稳
-                $source = $tokens[$tokens.Count - 1]
-                $available = $tokens[$tokens.Count - 2]
-                $installed = $tokens[$tokens.Count - 3]
-                $id = $tokens[$tokens.Count - 4]
-                $name = ($tokens[0..($tokens.Count - 5)] -join ' ')
-
-                if ($id -notmatch '^[A-Za-z0-9][A-Za-z0-9._+\-]*\.[A-Za-z0-9._+\-]+$') { continue }
-                if ($available -notmatch '^[0-9]') { continue }
-                if ($installed -notmatch '^[0-9]') { continue }
-
-                $rows += [pscustomobject]@{
-                    name             = $name
-                    id               = $id
-                    installedVersion = $installed
-                    availableVersion = $available
-                    source           = $source
-                }
-            }
+            $rows = @(ConvertFrom-WingetList $raw)
             Write-Result @{ updates = @($rows) }
         }
 
@@ -526,6 +520,12 @@ try {
             $wargs = @('show', '--id', $PackageId, '--exact', '--accept-source-agreements', '--disable-interactivity')
             if (-not [string]::IsNullOrWhiteSpace($Version)) { $wargs += @('--version', $Version) }
             $raw = & winget @wargs 2>&1 | Out-String
+            $exitCode = $LASTEXITCODE
+            if ($exitCode -ne 0) {
+                $detail = $raw.Trim()
+                if ($detail.Length -gt 500) { $detail = $detail.Substring(0, 500) }
+                Write-Failure "winget 查询安装包地址失败（退出码 $exitCode）：$detail"
+            }
             $urls = New-Object System.Collections.ArrayList
             foreach ($line in ($raw -split "`r?`n")) {
                 foreach ($m in [regex]::Matches($line, 'https?://[^\s"''<>]+')) {
@@ -542,7 +542,7 @@ try {
         'downloadSoftware' {
             if ([string]::IsNullOrWhiteSpace($PackageId)) { Write-Failure '缺少 PackageId' }
             $dir = $DownloadDirectory
-            if ([string]::IsNullOrWhiteSpace($dir)) { $dir = Join-Path $env:USERPROFILE 'Downloads\DevUp' }
+            if ([string]::IsNullOrWhiteSpace($dir)) { Write-Failure '缺少 DownloadDirectory，未执行下载' }
             if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 
             $wargs = @('download', '--id', $PackageId, '--exact', '--download-directory', $dir,

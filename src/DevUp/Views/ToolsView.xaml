@@ -268,7 +268,7 @@
                         </StackPanel>
 
                         <TextBlock Style="{StaticResource SubTitle}" TextWrapping="Wrap" Margin="0,8,0,10"
-                                   Text="运行时组件（PowerShell 脚本与开源模块）位于 %ProgramData%\DevUp\runtime。" />
+                                   Text="便携模式：应用数据统一保存在 exe 旁的 DevUpData 文件夹中，内含 data、logs、runtime、temp。目录不可写时会提示错误。" />
 
                         <Button Content="打开日志目录" Style="{StaticResource MiniButton}" HorizontalAlignment="Left"
                                 Click="BtnOpenLog_Click" />

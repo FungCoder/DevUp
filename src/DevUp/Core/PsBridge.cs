@@ -16,9 +16,9 @@ namespace DevUp.Core;
 /// 复用 PSWindowsUpdate / winget / Get-PnpDevice / Checkpoint-Computer 等系统与开源能力。
 ///
 /// 权限模型：
-///   · 普通权限的界面进程把运行时放在 %LOCALAPPDATA%\DevUp\runtime（用户自己拥有，无需管理员）。
+///   · 普通权限的界面进程把运行时放在程序目录下的 DevUpData/runtime/user。
 ///   · 需要管理员的动作（驱动搜索/安装、驱动备份还原、还原点）由“提权子进程”执行：
-///     它以 runas 重新启动自身副本，运行时放在 %ProgramData%\DevUp\runtime\<随机目录>，
+///     它以 runas 重新启动自身副本，运行时放在程序目录下的 DevUpData/runtime/s-<随机目录>，
 ///     并用 ACL 收紧为仅 Administrators / SYSTEM 可写，避免普通用户预置同名文件造成本地提权。
 /// </summary>
 public static class PsBridge
@@ -54,12 +54,11 @@ public static class PsBridge
 
     private static string ResolveRuntimeDir()
     {
-        var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
         if (Native.IsAdministrator())
         {
             // 管理员：每次运行使用独立随机目录，并立即收紧 ACL。
             // 随机名可防止普通用户事先创建同名目录投放恶意模块（本地提权）。
-            var root = Path.Combine(programData, "DevUp", "runtime");
+            var root = PortablePaths.Runtime;
             Directory.CreateDirectory(root);
             EnsureNotReparsePoint(root);
 
@@ -79,9 +78,7 @@ public static class PsBridge
             }
         }
 
-        // 普通用户：放在用户目录下，无需管理员，也不会被其他用户读写
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DevUp", "runtime");
+        return Path.Combine(PortablePaths.Runtime, "user");
     }
 
     /// <summary>拒绝使用被替换为符号链接/联接点的目录（防止普通用户劫持管理员进程）。</summary>
@@ -203,7 +200,7 @@ public static class PsBridge
     {
         EnsureRuntime();
 
-        var outFile = Path.Combine(Path.GetTempPath(), $"devup_{action}_{Guid.NewGuid():N}.json");
+        var outFile = Path.Combine(PortablePaths.Temp, $"devup_{action}_{Guid.NewGuid():N}.json");
         try
         {
             await RunProcessAsync(action, BuildArgs(action, args, outFile), outFile, ct);
@@ -222,8 +219,8 @@ public static class PsBridge
         var exe = Environment.ProcessPath
                   ?? throw new InvalidOperationException("无法定位当前可执行文件路径。");
 
-        var outFile = Path.Combine(Path.GetTempPath(), $"devup_{action}_{Guid.NewGuid():N}.json");
-        var argsFile = Path.Combine(Path.GetTempPath(), $"devup_args_{Guid.NewGuid():N}.json");
+        var outFile = Path.Combine(PortablePaths.Temp, $"devup_{action}_{Guid.NewGuid():N}.json");
+        var argsFile = Path.Combine(PortablePaths.Temp, $"devup_args_{Guid.NewGuid():N}.json");
 
         try
         {
@@ -371,8 +368,10 @@ public static class PsBridge
             // 脚本运行后把控制台编码设为 UTF-8，因此 stdout 按 UTF-8 解码；
             // stderr 承载的是 PowerShell 自身的诊断（此时脚本尚未执行，输出走系统 ANSI 代码页）。
             StandardOutputEncoding = Encoding.UTF8,
-            WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.Windows)
+            WorkingDirectory = RuntimeDir
         };
+        psi.Environment["PSModuleAnalysisCachePath"] =
+            Path.Combine(PortablePaths.Temp, $"ps-module-cache-{Environment.ProcessId}");
         foreach (var a in args) psi.ArgumentList.Add(a);
 
         using var proc = new Process { StartInfo = psi };

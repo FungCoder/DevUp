@@ -12,11 +12,16 @@ public partial class DashboardView : UserControl
     }
 
     private async void BtnScanDevices_Click(object sender, RoutedEventArgs e)
-        => await Ctx.RunAsync("正在扫描设备与驱动仓库…", async () =>
+        => await Ctx.RunScanAsync("正在扫描设备与驱动仓库…", async (progress, ct) =>
         {
-            await Scanner.ScanDevicesAsync();
-            await Scanner.ScanDriverPackagesAsync();
-            await Scanner.ScanSoftwareAsync();
+            progress.Report(new ProgressInfo { Status = "1/3 正在扫描设备" });
+            await Scanner.ScanDevicesAsync(ct);
+            progress.Report(new ProgressInfo { Status = "2/3 正在读取驱动仓库",
+                Detail = $"已识别 {Ctx.State.Devices.Count} 台设备" });
+            await Scanner.ScanDriverPackagesAsync(ct);
+            progress.Report(new ProgressInfo { Status = "3/3 正在扫描已安装软件",
+                Detail = $"已读取 {Ctx.State.DriverPackages.Count} 个驱动包" });
+            await Scanner.ScanSoftwareAsync(ct);
         });
 
     /// <summary>点“需要处理的设备”卡片：跳到设备页并只看异常设备。</summary>
@@ -32,18 +37,18 @@ public partial class DashboardView : UserControl
         => (Window.GetWindow(this) as MainWindow)?.NavigateToDevices(problemOnly: false);
 
     private async void BtnScanDriverUpdates_Click(object sender, RoutedEventArgs e)
-        => await Ctx.RunAsync("正在查询 Windows Update 驱动…", async () =>
-        {
-            await Scanner.ScanDriverUpdatesAsync(false);
+    {
+        if (await Ctx.RunScanAsync("正在查询 Windows Update 驱动…",
+            async (_, ct) => await Scanner.ScanDriverUpdatesAsync(false, ct)))
             Ui.Info("驱动更新", $"发现 {Ctx.State.DriverUpdates.Count} 个可用驱动更新。");
-        });
+    }
 
     private async void BtnScanSoftwareUpdates_Click(object sender, RoutedEventArgs e)
-        => await Ctx.RunAsync("正在通过 winget 检查软件更新…", async () =>
-        {
-            await Scanner.ScanSoftwareUpdatesAsync();
+    {
+        if (await Ctx.RunScanAsync("正在通过 winget 检查软件更新…",
+            async (_, ct) => await Scanner.ScanSoftwareUpdatesAsync(ct)))
             Ui.Info("软件更新", $"发现 {Ctx.State.Summary.SoftwareUpdates} 个可用软件更新。");
-        });
+    }
 
     private async void BtnBackup_Click(object sender, RoutedEventArgs e)
         => await Ctx.RunAsync("正在导出全部驱动包…", async () =>

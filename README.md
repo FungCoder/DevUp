@@ -1,10 +1,10 @@
 # DevUp · 驱动与软件更新助手
 
 > 一个 Windows 桌面小工具：**看清设备健康状况、装对官方驱动、把已装软件升级到最新版**。
-> 界面用 WPF 自绘，更新逻辑复用成熟的开源内核，最终打包成**单个 exe**，双击即用。
+> 界面用 WPF 自绘，更新逻辑复用成熟的开源内核，以**单个 DevUp.exe** 分发，使用官方 **.NET 8 桌面运行时（x64）**，无需安装 DevUp。
 
 - 作者：风之翼灵'Blog · <https://www.fungj.com>
-- 版本：1.1.0（Windows 10 19041+ / Windows 11，x64）
+- 版本：1.1.1（Windows 10 19041+ / Windows 11，x64）
 - 许可证：MIT（第三方组件各自遵循其许可证，见 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)）
 
 ![DevUp 概览](docs/images/ui-dashboard.png)
@@ -34,13 +34,14 @@
 - Windows Update 里没有的驱动，可用「查目录」按硬件 ID 检索 Microsoft Update Catalog。
 
 ### 软件更新
-- `winget upgrade` 精确比对，显示「已装版本 → 可用版本」。
+- `winget list --source winget` 精确比对，显示「已装版本 → 可用版本」；无更新时也保留包 ID，可查看清单信息。没有升级不代表已是厂商最新版，软件源可能落后于官网。
 - 选中一行后展示 **官方更新说明、发布日期、安装包类型、官方下载地址**，以及 `winget show` 清单登记的 **SHA256**。
 - 「下载并校验安装包」保存安装包到下载目录，并计算本地 **SHA256 + MD5** 与官方清单值比对：
   - 一致 → 显示「校验一致」，确认安装包与 winget 官方清单完全相同；
   - 不一致 → 红色警示，建议不要运行；
   - 清单未登记 SHA256 → 明确标注「仅本地计算」，**不伪造校验值**。
-- 单条 / 批量升级；进度窗显示**下载进度、速度、剩余时间**，安装结束后清理 `%TEMP%\WinGet` 临时安装包。
+- 设备、驱动、软件和 npm 扫描显示真实步骤或已读取数量，并提供取消和超时后的失败提示；失败后可重新检查。
+- 单条 / 批量升级；winget 流程显示可确认的下载、校验和安装阶段，并在长期无进展时提示重试，不显示推测的下载百分比。升级通过隐藏伪终端读取 winget 的实时下载计数，兼容 Windows 传递优化下载；百分比来自已下载字节与总量，速度来自计数增量。下载、校验和安装分别显示，校验后保留已下载总量；不再依赖缓存文件出现的时机。下载器尚未报告总量时不显示推测的百分比。速度、下载量和进度分栏显示，说明放在悬浮提示中。单独下载安装包时显示实际下载量、速度和剩余时间，网络中断会自动重试。升级结束后清理 `%TEMP%\WinGet` 临时安装包。
 - 升级失败不会甩出 winget 原始错误，而是给出**原因 + 下一步**（重试安装 / 打开官方下载页 / 需要管理员权限等）。
 
 ### Node.js 包
@@ -57,7 +58,7 @@
 ## 3. 架构
 
 ```
-DevUp.exe（WPF 外壳，单文件自包含）
+DevUp.exe（WPF 外壳，单文件，依赖官方 .NET 8 桌面运行时）
 ├─ Views/       概览 / 驱动与设备 / 软件更新 / Node.js 包 / 备份与工具
 │               + 自绘 MessageDialog、ProgressDialog、StartupDialog
 ├─ Services/    DeviceService、DriverStoreService、DriverUpdateService、
@@ -76,14 +77,20 @@ DevUp.exe（WPF 外壳，单文件自包含）
 
 **提权模型**：主进程 `asInvoker`。需要管理员的动作以 `--elevated-action <动作> --elevated-args <json> --elevated-out <文件>` 重新启动自身副本，由系统弹 UAC，结果经文件回传。
 
-**运行时目录**（首次运行自动释放内嵌资源）：
+**便携数据目录**（exe 旁只生成一个 `DevUpData/` 总目录；以下路径均相对于该总目录，不使用启动时的工作目录）：
 
-| 场景 | 位置 | 说明 |
+| 文件 | 位置 | 说明 |
 | --- | --- | --- |
-| 普通权限进程 | `%LOCALAPPDATA%\DevUp\runtime\` | 用户自有，无需管理员 |
-| 提权子进程 | `%ProgramData%\DevUp\runtime\s-<随机>\` | 随机目录 + ACL 收紧为仅 Administrators / SYSTEM 可写，**防止普通用户预置同名文件造成本地提权**；子进程退出即删除 |
-| 设置 | `%LOCALAPPDATA%\DevUp\settings.json` | 备份目录、下载目录、启动方式、忽略列表 |
-| 日志 | `%LOCALAPPDATA%\DevUp\logs\devup.log` | |
+| 普通权限运行组件 | `runtime/user/` | 从内嵌资源释放 |
+| 管理员运行组件 | `runtime/s-<随机>/` | 保留 ACL 保护，进程退出时清理 |
+| 设置 | `data/settings.json` | 程序目录内的路径保存为相对路径，移动后仍有效 |
+| 日志 | `logs/devup.log` | 随程序保存 |
+| 通信临时文件、PowerShell 模块分析缓存 | `temp/` | 动作完成后删除通信文件 |
+| 驱动备份、离线安装包 | 默认 `backups/`、`downloads/` | 可通过界面选择其他目录 |
+
+应用自有目录或用户选择的目录不可写时会明确报错，不静默回退到用户目录或系统目录。
+上一版 exe 旁 `data/settings.json` 中的配置会自动迁入 `DevUpData/data/settings.json`，保留用户选择的外部目录；旧默认下载和备份路径改到总目录下，旧文件不自动移动或删除。更早版本留在 AppData / ProgramData 中的数据不会自动迁移或删除；需要保留时，可自行复制 settings.json 到 DevUpData/data/。
+便携范围限于 DevUp 自身。npm、winget、Windows Update 和软件安装器保留官方安装路径、缓存及系统服务行为；仅在用户执行相应操作时进行安装、更新、备份或导出。不修改 npm prefix、缓存配置、系统环境变量或第三方软件安装目录。
 
 > 提权子进程收到的参数来自外部，一律按不可信输入处理：更新 ID 必须是合法 GUID，驱动包名必须匹配 `oemN.inf`。
 
@@ -108,14 +115,14 @@ DevUp.exe（WPF 外壳，单文件自包含）
 powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 ```
 
-产物：`build\publish\DevUp.exe`（单文件、自包含 win-x64，约 70 MB）。
+产物：`build\single-file\DevUp.exe`，仅分发这一个文件。运行电脑需要官方 **.NET 8 Desktop Runtime（x64）**；普通 .NET Runtime 不包含 WPF，不能替代桌面运行时。程序不会自行安装运行时，也不携带需要自解压的原生运行时依赖。
 
 > **编码提示**：`src\DevUp\Scripts\devup.ps1` 含中文，必须保存为 **UTF-8 with BOM**，
 > 否则 PowerShell 5.1 会按 GBK 解析而报错。可用 `scripts\fix-encoding.ps1` 批量校正。
 
 ## 6. 使用
 
-1. 双击 `DevUp.exe`，按需选择管理员 / 普通权限（可记住）。
+1. 将 `DevUp.exe` 放到可写目录，确认已安装官方 .NET 8 桌面运行时（x64），双击运行，按需选择管理员 / 普通权限（可记住）。
 2. **概览**：看三张卡片，点「查看 ›」进入对应功能页。
 3. **驱动与设备**：点「扫描驱动更新」查询官方驱动（需管理员时会弹 UAC）；左上下拉框可筛选「仅异常设备 / 缺失驱动 / 未连接的设备」；右下「可用驱动更新」勾选左侧方框 → 「安装选中的 N 项」。
 4. **软件更新**：点「检查更新（winget）」→ 用「仅可更新」筛选 → 点一行查看官方更新说明与 SHA256 → 右侧「升级到此版本 / 下载安装包」，或用「全部升级」。
@@ -136,7 +143,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 SHA256 来自 `winget show` 读取的 winget 官方源清单（与 `winget` 安装前校验的值相同），界面会标明来源；MD5 只在本地下载后计算，用于留档核对。点「下载并校验安装包」后，DevUp 会把本地 SHA256 与清单值逐位比对：一致才显示绿色「校验一致」，不一致会红色警示。清单未提供哈希的软件会明确写明"仅本地计算"，不会编造。
 
 **Q：为什么第一次点窗口时没反应？**
-程序已对首次激活点击做兼容处理；若仍遇到，请再点一次并反馈日志（`%LOCALAPPDATA%\DevUp\logs\devup.log`）。
+程序已对首次激活点击做兼容处理；若仍遇到，请再点一次并反馈 exe 旁的日志 `DevUpData\logs\devup.log`。
 
 ## 8. 目录结构
 
@@ -146,10 +153,12 @@ DevUp/
 ├─ lib/                  内嵌的开源 PowerShell 模块（PSWindowsUpdate、MSCatalog）
 ├─ scripts/              构建、编码修正、调试脚本
 ├─ docs/                 第三方署名与许可证
-├─ build/publish/        发布产物（DevUp.exe，git 忽略）
+├─ build/single-file/    单文件发布产物 DevUp.exe（git 忽略）
 └─ .github/workflows/    CI：构建校验
 ```
 
 ## 9. 许可证
 
 本项目自身代码由 风之翼灵'Blog 维护，以 MIT 许可证发布；随包内第三方组件遵循各自的 MIT 许可证（见 `docs/ATTRIBUTION.md` 与 `LICENSE`）。
+
+便携路径回归检查：`dotnet run --project tests/DevUp.PortableTests -c Release`（含真实 PowerShell 调用；不安装软件或驱动）。

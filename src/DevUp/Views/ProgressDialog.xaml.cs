@@ -137,6 +137,15 @@ public partial class ProgressDialog : Window
 
         var detail = info.Detail ?? "";
         if (DetailText.Text != detail) DetailText.Text = detail;
+        DetailText.ToolTip = info.DetailHint ?? detail;
+
+        var hasMetric = !string.IsNullOrEmpty(info.Metric);
+        MetricText.Text = info.Metric ?? "";
+        MetricText.ToolTip = info.Metric;
+        MetricText.Visibility = hasMetric ? Visibility.Visible : Visibility.Collapsed;
+        DetailColumn.Width = hasMetric ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
+        MetricColumn.Width = hasMetric ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        DetailText.MaxWidth = hasMetric ? 140 : double.PositiveInfinity;
 
         BtnCancel.IsEnabled = info.CanCancel && !_cts.IsCancellationRequested;
         var vis = info.CanCancel ? Visibility.Visible : Visibility.Collapsed;

@@ -41,14 +41,32 @@ jobs:
       - name: 编译
         run: dotnet build src/DevUp/DevUp.csproj -c Release --no-restore
 
-      - name: 发布单文件产物
+      - name: 验证便携路径与 PowerShell 调用
+        run: dotnet run --project tests/DevUp.PortableTests -c Release
+
+      - name: 验证 winget 列表解析
+        shell: powershell
+        run: ./tests/Test-WingetList.ps1
+
+      - name: 验证实时终端输出
+        run: dotnet run --project tests/DevUp.PortableTests -c Release --no-restore -- --console-only
+
+      - name: 发布单文件
         run: >
           dotnet publish src/DevUp/DevUp.csproj -c Release -r win-x64
-          --self-contained true -p:PublishSingleFile=true -o build/publish
+          --self-contained false -p:PublishSingleFile=true -o build/single-file
+
+      - name: 校验发布目录只有一个 exe
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem build/single-file -File)
+          if ($files.Count -ne 1 -or $files[0].Name -ne 'DevUp.exe') {
+            throw '发布目录未满足单文件分发要求'
+          }
 
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: DevUp-win-x64
-          path: build/publish/DevUp.exe
+          name: DevUp-win-x64-single-file
+          path: build/single-file/DevUp.exe
           if-no-files-found: error

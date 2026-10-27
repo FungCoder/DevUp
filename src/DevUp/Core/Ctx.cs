@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using DevUp.Models;
 using DevUp.Services;
+using DevUp.Views;
 
 namespace DevUp.Core;
 
@@ -66,6 +67,72 @@ public static class Ctx
         }
     }
 
+    /// <summary>运行可取消的扫描，并在超时或失败时给出明确结果。</summary>
+    public static async Task<bool> RunScanAsync(
+        string status, Func<IProgress<ProgressInfo>, CancellationToken, Task> action,
+        TimeSpan? timeout = null)
+    {
+        if (State.IsBusy)
+        {
+            Ui.Warn("正在执行其他操作", "请等待当前任务完成后再试。");
+            return false;
+        }
+
+        State.IsBusy = true;
+        await Task.Yield();
+        try
+        {
+            while (true)
+            {
+                State.StatusText = status;
+                Ui.Log(status);
+                try
+                {
+                    var completed = ProgressDialog.Run("扫描与检查", status,
+                        async (progress, ct) =>
+                        {
+                            using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                            limit.CancelAfter(timeout ?? TimeSpan.FromMinutes(5));
+                            progress.Report(new ProgressInfo
+                            {
+                                Status = status, Detail = "可随时取消"
+                            });
+                            try
+                            {
+                                await action(progress, limit.Token);
+                            }
+                            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                            {
+                                throw new TimeoutException(
+                                    $"{status}超时，已停止。请检查网络或系统服务后重试。");
+                            }
+                        });
+                    State.StatusText = completed
+                        ? "完成 · " + DateTime.Now.ToString("HH:mm:ss") : "已取消";
+                    if (!completed) Ui.Log(status + " 已取消", "WARN");
+                    return completed;
+                }
+                catch (UserCancelledException ex)
+                {
+                    State.StatusText = "已取消";
+                    Ui.Info("已取消", ex.Message);
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    State.StatusText = "失败";
+                    Ui.Log($"{status} 失败: {ex}", "ERROR");
+                    if (!Ui.Confirm("扫描或检查失败",
+                        ex.Message + "\n\n是否重试本次操作？")) return false;
+                }
+            }
+        }
+        finally
+        {
+            State.IsBusy = false;
+        }
+    }
+
     public static async Task LoadSystemInfoAsync(CancellationToken ct = default)
     {
         try
@@ -89,6 +156,10 @@ public static class Ctx
                 Info.BiosVersion = DriverUpdateService.Str(s, "biosVersion");
                 Info.BiosDate = DriverUpdateService.Str(s, "biosDate");
             }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

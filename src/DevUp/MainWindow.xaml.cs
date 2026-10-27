@@ -36,7 +36,7 @@ public partial class MainWindow : Window
 
         AdminBadge.Text = Native.IsAdministrator() ? "权限：管理员" : "权限：普通用户（部分操作会临时提权）";
         BtnElevate.Visibility = Native.IsAdministrator() ? Visibility.Collapsed : Visibility.Visible;
-        BuildInfo.Text = "v" + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.1.0");
+        BuildInfo.Text = "v" + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.1.1");
 
         Ctx.State.PropertyChanged += (_, e) =>
         {
@@ -69,14 +69,11 @@ public partial class MainWindow : Window
 
     private async Task InitialScanAsync()
     {
-        await Ctx.RunAsync("正在扫描设备与驱动…", async () =>
+        await Ctx.RunScanAsync("正在扫描本机信息…", async (progress, ct) =>
         {
-            await Ctx.LoadSystemInfoAsync();
-            await Scanner.ScanDevicesAsync();
-            await Scanner.ScanDriverPackagesAsync();
-            await Scanner.ScanSoftwareAsync();
-            await Scanner.ScanSoftwareUpdatesAsync();
-        });
+            await Ctx.LoadSystemInfoAsync(ct);
+            await Scanner.ScanOverviewAsync(progress, ct);
+        }, TimeSpan.FromMinutes(8));
     }
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
@@ -175,23 +172,23 @@ public partial class MainWindow : Window
 
     private async void BtnRescan_Click(object sender, RoutedEventArgs e)
     {
-        await Ctx.RunAsync("正在重新扫描…", async () =>
+        await Ctx.RunScanAsync("正在重新扫描…", async (progress, ct) =>
         {
-            await Ctx.LoadSystemInfoAsync();
-            await Scanner.ScanDevicesAsync();
-            await Scanner.ScanDriverPackagesAsync();
-            await Scanner.ScanSoftwareAsync();
-            await Scanner.ScanSoftwareUpdatesAsync();
-        });
+            await Ctx.LoadSystemInfoAsync(ct);
+            await Scanner.ScanOverviewAsync(progress, ct);
+        }, TimeSpan.FromMinutes(8));
     }
 
     private async void BtnScanUpdates_Click(object sender, RoutedEventArgs e)
     {
-        await Ctx.RunAsync("正在检查更新…", async () =>
+        var completed = await Ctx.RunScanAsync("正在检查更新…", async (progress, ct) =>
         {
-            await Scanner.ScanDriverUpdatesAsync(false);
-            await Scanner.ScanSoftwareUpdatesAsync();
-        });
+            progress.Report(new ProgressInfo { Status = "1/2 正在查询驱动更新", Detail = "Windows Update" });
+            await Scanner.ScanDriverUpdatesAsync(false, ct);
+            progress.Report(new ProgressInfo { Status = "2/2 正在检查软件更新", Detail = "winget 源" });
+            await Scanner.ScanSoftwareUpdatesAsync(ct);
+        }, TimeSpan.FromMinutes(5));
+        if (!completed) return;
 
         var s = Ctx.State.Summary;
         Ui.Info("检查完成",

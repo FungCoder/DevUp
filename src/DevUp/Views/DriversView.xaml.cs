@@ -255,16 +255,16 @@ public partial class DriversView : UserControl
     // ---------------- 操作 ----------------
 
     private async void BtnRefresh_Click(object sender, RoutedEventArgs e)
-        => await Ctx.RunAsync("正在刷新设备列表…", async () =>
+        => await Ctx.RunScanAsync("正在刷新设备列表…", async (_, ct) =>
         {
-            await Scanner.ScanDevicesAsync();
+            await Scanner.ScanDevicesAsync(ct);
             ApplyFilter();
         });
 
     private async void BtnScanUpdates_Click(object sender, RoutedEventArgs e)
-        => await Ctx.RunAsync("正在查询 Windows Update 驱动…", async () =>
+        => await Ctx.RunScanAsync("正在查询 Windows Update 驱动…", async (_, ct) =>
         {
-            await Scanner.ScanDriverUpdatesAsync(false);
+            await Scanner.ScanDriverUpdatesAsync(false, ct);
             _hasScannedUpdates = true;
             _showIgnoredUpdates = false;
             ApplyUpdateFilter();
