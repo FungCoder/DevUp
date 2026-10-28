@@ -7,7 +7,7 @@
 - 版本：1.1.1（Windows 10 19041+ / Windows 11，x64）
 - 许可证：MIT（第三方组件各自遵循其许可证，见 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)）
 
-![DevUp 概览](docs/images/ui-dashboard.png)
+![DevUp 概览（系统信息与个人路径已打码）](docs/images/ui-dashboard-redacted.png)
 
 ---
 
