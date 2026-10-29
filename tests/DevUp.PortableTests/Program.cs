@@ -3,6 +3,12 @@ using System.Text.Json;
 using DevUp.Core;
 using DevUp.Services;
 
+if (args.Contains("--dialogs-only") || args.Contains("--dialogs-preview"))
+{
+    DialogChecks.Run(args.Contains("--dialogs-preview"));
+    return;
+}
+
 if (args.Contains("--console-only"))
 {
     await ConsoleChecks.RunAsync();

@@ -10,7 +10,7 @@
 
     <AssemblyName>DevUp</AssemblyName>
     <RootNamespace>DevUp</RootNamespace>
-    <Version>1.1.1</Version>
+    <Version>1.1.2</Version>
     <Product>DevUp 驱动与软件更新助手</Product>
     <AssemblyTitle>DevUp</AssemblyTitle>
     <Company>风之翼灵'Blog</Company>

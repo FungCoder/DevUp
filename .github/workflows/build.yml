@@ -44,6 +44,9 @@ jobs:
       - name: 验证便携路径与 PowerShell 调用
         run: dotnet run --project tests/DevUp.PortableTests -c Release
 
+      - name: 验证弹窗与主窗口交互
+        run: dotnet run --project tests/DevUp.PortableTests -c Release --no-restore -- --dialogs-only
+
       - name: 验证 winget 列表解析
         shell: powershell
         run: ./tests/Test-WingetList.ps1

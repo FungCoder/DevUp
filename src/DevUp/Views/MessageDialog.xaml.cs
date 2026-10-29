@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using DevUp.Core;
 
 namespace DevUp.Views;
 
@@ -25,7 +26,6 @@ public partial class MessageDialog : Window
         {
             if (e.Key == Key.Escape)
             {
-                DialogResult = false;
                 Close();
             }
         };
@@ -50,7 +50,8 @@ public partial class MessageDialog : Window
         dlg.MessageText.Text = message;
         dlg.Apply(kind, confirm);
 
-        return dlg.ShowDialog() == true;
+        MovableDialog.Show(dlg);
+        return dlg._choice == DialogChoice.Ok;
     }
 
     /// <summary>
@@ -81,7 +82,7 @@ public partial class MessageDialog : Window
         dlg.BtnCancel.Content = cancelText;
         dlg.BtnCancel.Visibility = Visibility.Visible;
 
-        dlg.ShowDialog();
+        MovableDialog.Show(dlg);
         return dlg._choice;
     }
 
@@ -110,21 +111,18 @@ public partial class MessageDialog : Window
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
         _choice = DialogChoice.Ok;
-        DialogResult = true;
         Close();
     }
 
     private void Extra_Click(object sender, RoutedEventArgs e)
     {
         _choice = DialogChoice.Extra;
-        DialogResult = true;
         Close();
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
         _choice = DialogChoice.Cancel;
-        DialogResult = false;
         Close();
     }
 }

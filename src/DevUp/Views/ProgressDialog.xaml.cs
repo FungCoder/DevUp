@@ -17,6 +17,7 @@ public partial class ProgressDialog : Window
     private bool _indeterminate;
     private double _percent;
     private bool _finished;
+    private bool _result;
 
     public ProgressDialog()
     {
@@ -36,7 +37,7 @@ public partial class ProgressDialog : Window
         Closed += (_, _) => _timer.Stop();
 
         // Alt+F4 / 标题栏关闭：先取消任务，等任务真正收尾再关窗，
-        // 避免后台任务继续跑、往已关闭窗口写 DialogResult。
+        // 避免后台任务继续跑、往已关闭窗口写入结果。
         Closing += OnClosing;
     }
 
@@ -53,9 +54,9 @@ public partial class ProgressDialog : Window
         dlg._work = work;
         dlg.Loaded += async (_, _) => await dlg.ExecuteAsync();
 
-        var closed = dlg.ShowDialog();
+        MovableDialog.Show(dlg);
         if (dlg._error is not null) throw dlg._error;
-        return closed == true;
+        return dlg._result;
     }
 
     private void OnClosing(object? sender, CancelEventArgs e)
@@ -91,15 +92,15 @@ public partial class ProgressDialog : Window
         }
     }
 
-    /// <summary>结束对话框：先标记完成再设置结果，避免 Closing 拦截。</summary>
+    /// <summary>结束对话框：先标记完成再关闭，避免 Closing 拦截。</summary>
     private void Finish(bool result)
     {
         _finished = true;
+        _result = result;
         _timer.Stop();
         try
         {
-            if (IsVisible) DialogResult = result;
-            else Close();
+            Close();
         }
         catch (InvalidOperationException)
         {
