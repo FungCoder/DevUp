@@ -163,3 +163,5 @@ DevUp/
 本项目自身代码由 风之翼灵'Blog 维护，以 MIT 许可证发布；随包内第三方组件遵循各自的 MIT 许可证（见 `docs/ATTRIBUTION.md` 与 `LICENSE`）。
 
 便携路径回归检查：`dotnet run --project tests/DevUp.PortableTests -c Release`（含真实 PowerShell 调用；不安装软件或驱动）。
+
+窗口交互检查需在有交互桌面的 Windows 本机运行：`dotnet run --project tests/DevUp.PortableTests -c Release -- --dialogs-only`。手动拖动验证可使用 `--dialogs-preview`，测试窗口会在 45 秒后自动关闭；这两项不在托管 CI 上运行。
