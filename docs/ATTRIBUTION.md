@@ -1,6 +1,6 @@
 # 第三方组件与许可证（Attribution）
 
-DevUp 的界面与业务代码为自有实现；下列开源组件以 **NuGet 引用** 或 **模块内嵌** 的方式复用，
+DevUp 的界面与业务代码为自有实现；下列开源组件以 **NuGet 引用**、**模块内嵌** 或 **源码引用** 的方式复用，
 版权归原作者所有，均以 MIT 许可证分发。此文件随软件一同分发，用于满足 MIT 许可证的署名要求。
 
 ---
@@ -134,11 +134,44 @@ SOFTWARE.
 
 ---
 
-## 6. 未使用的项目说明
+## 6. FluentCleaner 规则解析器
+
+- 项目主页：<https://github.com/builtbybel/FluentCleaner>
+- 固定提交：`18977b765e6c917e68224847a30d0429d4145e7a`
+- 作者：A Belim app creation
+- 许可证：MIT，完整原文保存在 `lib/FluentCleaner/LICENSE`，并以 `FluentCleaner.LICENSE` 内嵌于 DevUp.exe。
+- 复用方式：原样引用 `FluentCleaner.Core/Models` 下的 `CleanerEntry`、`FileKeyEntry`、`ExcludeKeyEntry`、`RegKeyEntry` 和 `Services/Winapp2Parser.cs`，通过工程级 `System.IO` using 兼容 WPF 工程。
+- 用途：解析 DevUp 自有的 `Cleaning/Rules.ini`；未引入上游 UI、清理执行代码及 Winapp2 数据库。DevUp 不执行规则中的注册表删除、外部命令或 REMOVESELF 操作。
+
+```text
+MIT License
+
+Copyright (c) 2026 A Belim app creation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## 7. 未使用的项目说明
 
 本项目的设计思路参考了同类开源工具（如 SDIO 等）的公开文档与交互方式，但**未复制其源码**；
 SDIO 等项目采用 GPLv3 许可证，本项目为避免许可证传染，仅自行实现相似功能。
 
 ---
 
-最后更新：2026-10-22
+最后更新：2026-11-13

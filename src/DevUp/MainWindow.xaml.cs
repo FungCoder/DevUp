@@ -14,6 +14,7 @@ public partial class MainWindow : Window
     private readonly SoftwareView _software = new();
     private readonly NpmView _npm = new();
     private readonly ToolsView _tools = new();
+    private readonly CleanupView _cleanup = new();
 
     public MainWindow()
     {
@@ -30,13 +31,14 @@ public partial class MainWindow : Window
             "software" => NavSoftware,
             "npm" => NavNpm,
             "tools" => NavTools,
+            "cleanup" => NavCleanup,
             _ => NavDashboard
         };
         startPage.IsChecked = true;
 
         AdminBadge.Text = Native.IsAdministrator() ? "权限：管理员" : "权限：普通用户（部分操作会临时提权）";
         BtnElevate.Visibility = Native.IsAdministrator() ? Visibility.Collapsed : Visibility.Visible;
-        BuildInfo.Text = "v" + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.1.2");
+        BuildInfo.Text = "v" + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.2.0");
 
         Ctx.State.PropertyChanged += (_, e) =>
         {
@@ -49,6 +51,9 @@ public partial class MainWindow : Window
                     BusyBar.Visibility = Ctx.State.IsBusy ? Visibility.Visible : Visibility.Collapsed;
                     BtnRescan.IsEnabled = !Ctx.State.IsBusy;
                     BtnScanUpdates.IsEnabled = !Ctx.State.IsBusy;
+                    BtnElevate.IsEnabled = !Ctx.State.IsBusy;
+                    foreach (var nav in new[] { NavDashboard, NavDrivers, NavSoftware, NavNpm, NavTools, NavCleanup })
+                        nav.IsEnabled = !Ctx.State.IsBusy;
                     break;
                 case nameof(Models.ScanState.Summary):
                     ScanTimeText.Text = Ctx.State.Summary.ScannedAt == default
@@ -65,6 +70,13 @@ public partial class MainWindow : Window
         });
 
         Loaded += async (_, _) => await InitialScanAsync();
+        Closing += (_, args) =>
+        {
+            if (!_cleanup.IsRunning) return;
+            args.Cancel = true;
+            _cleanup.Cancel();
+            Ctx.State.StatusText = "正在停止垃圾清理任务，停止后可关闭窗口";
+        };
     }
 
     private async Task InitialScanAsync()
@@ -82,7 +94,7 @@ public partial class MainWindow : Window
         if (sender is not ToggleButton tab) return;
 
         // 只允许一个导航项处于选中态
-        foreach (var other in new[] { NavDashboard, NavDrivers, NavSoftware, NavNpm, NavTools })
+        foreach (var other in new[] { NavDashboard, NavDrivers, NavSoftware, NavNpm, NavTools, NavCleanup })
             if (!ReferenceEquals(other, tab)) other.IsChecked = false;
 
         switch (tab.Name)
@@ -106,6 +118,10 @@ public partial class MainWindow : Window
             case "NavTools":
                 PageHost.Content = _tools;
                 SetHeader("备份与工具", "驱动备份 / 还原 / 还原点 / 报告导出");
+                break;
+            case "NavCleanup":
+                PageHost.Content = _cleanup;
+                SetHeader("垃圾清理", "扫描系统垃圾与软件缓存，查看明细后按需清理");
                 break;
         }
 
@@ -156,7 +172,8 @@ public partial class MainWindow : Window
         {
             var exe = Environment.ProcessPath ?? "DevUp.exe";
             // StartElevated 返回 false 表示用户在 UAC 对话框点了“否”：此时不能退出主程序
-            if (!Native.StartElevated(exe, "--elevated-main"))
+            if (!Native.StartElevated(exe, NavCleanup.IsChecked == true
+                    ? "--elevated-main --page cleanup" : "--elevated-main"))
             {
                 Ui.Info("已取消", "未以管理员身份重新启动，仍以当前权限继续运行。");
                 return;

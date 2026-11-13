@@ -10,5 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/DevUp/DevUp.csproj" />
+    <!-- 在测试宿主中构造主窗口时，WPF 从入口程序集解析相对图标 URI。 -->
+    <Resource Include="../../src/DevUp/Assets/app.ico" Link="Assets/app.ico" />
   </ItemGroup>
 </Project>

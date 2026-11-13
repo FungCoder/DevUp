@@ -35,6 +35,7 @@
     <PathGeometry x:Key="IconSoftware" Figures="M4,7 L20,7 L20,19 L4,19 Z M4,10 L20,10 M9,4 L15,4" />
     <PathGeometry x:Key="IconNpm" Figures="M12,2 L21,7 L21,17 L12,22 L3,17 L3,7 Z M8,10 L8,15 M11,10 L11,15 M14,10 L17,10 L17,15" />
     <PathGeometry x:Key="IconTools" Figures="M4,6 L20,6 L20,18 L4,18 Z M8,10 L16,10 M8,14 L13,14" />
+    <PathGeometry x:Key="IconCleanup" Figures="M4,6 L20,6 M9,6 L9,3 L15,3 L15,6 M6,6 L7,21 L17,21 L18,6 M10,10 L10,17 M14,10 L14,17" />
 
     <Style x:Key="ToolbarSurface" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource CardBrush}" />

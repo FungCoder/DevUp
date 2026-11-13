@@ -7,6 +7,25 @@ namespace DevUp.Core;
 /// <summary>原生 API 封装：管理员判定 + Authenticode 签名校验。</summary>
 public static class Native
 {
+    [DllImport("shell32.dll")]
+    private static extern int SHGetKnownFolderPath(
+        ref Guid folderId, uint flags, IntPtr token, out IntPtr path);
+
+    /// <summary>读取当前用户的下载目录，保留 Windows 设置的重定向位置，不创建目录。</summary>
+    internal static string GetDownloadsFolder()
+    {
+        var folderId = new Guid("374DE290-123F-4565-9164-39C4925E467B");
+        var pointer = IntPtr.Zero;
+        try
+        {
+            // KF_FLAG_DONT_VERIFY：只读取配置，下载目录暂时离线或不存在也不触碰磁盘。
+            Marshal.ThrowExceptionForHR(SHGetKnownFolderPath(ref folderId, 0x4000, IntPtr.Zero, out pointer));
+            return Marshal.PtrToStringUni(pointer)
+                ?? throw new InvalidOperationException("无法读取下载目录，已停止清理以保护个人文件。");
+        }
+        finally { if (pointer != IntPtr.Zero) Marshal.FreeCoTaskMem(pointer); }
+    }
+
     // 注意：ShellExecuteExW 只接收一个参数（指向 SHELLEXECUTEINFOW 的指针）。
     // 之前误写成 (IntPtr hwnd, ref info)，导致指针被放进第二个参数、第一个参数为 NULL，
     // shell32 解引用空指针抛 AccessViolationException (0xC0000005)，进程启动即崩溃。

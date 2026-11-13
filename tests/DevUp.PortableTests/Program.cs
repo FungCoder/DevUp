@@ -3,6 +3,17 @@ using System.Text.Json;
 using DevUp.Core;
 using DevUp.Services;
 
+if (args.Contains("--cleanup-ui"))
+{
+    CleanupViewChecks.Run();
+    return;
+}
+if (args.Contains("--cleanup-only"))
+{
+    await CleanupChecks.RunAsync();
+    return;
+}
+
 if (args.Contains("--dialogs-only") || args.Contains("--dialogs-preview"))
 {
     DialogChecks.Run(args.Contains("--dialogs-preview"));
@@ -26,6 +37,7 @@ if (args.Contains("--probe-small"))
 }
 SoftwareChecks.Run();
 if (args.Contains("--software-only")) return;
+await CleanupChecks.RunAsync();
 
 var originalDirectory = Environment.CurrentDirectory;
 var variables = new[] { "TEMP", "TMP", "npm_config_cache", "npm_config_prefix", "USERPROFILE", "LOCALAPPDATA" };

@@ -1,10 +1,10 @@
 # DevUp · 驱动与软件更新助手
 
-> 一个 Windows 桌面小工具：**看清设备健康状况、装对官方驱动、把已装软件升级到最新版**。
+> 一个 Windows 桌面小工具：**看清设备健康状况、装对官方驱动、升级软件、清理系统与软件缓存**。
 > 界面用 WPF 自绘，更新逻辑复用成熟的开源内核，以**单个 DevUp.exe** 分发，使用官方 **.NET 8 桌面运行时（x64）**，无需安装 DevUp。
 
 - 作者：风之翼灵'Blog · <https://www.fungj.com>
-- 版本：1.1.2（Windows 10 19041+ / Windows 11，x64）
+- 版本：1.2.0（Windows 10 19041+ / Windows 11，x64）
 - 许可证：MIT（第三方组件各自遵循其许可证，见 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)）
 
 ![DevUp 概览（系统信息与个人路径已打码）](docs/images/ui-dashboard-redacted.png)
@@ -52,6 +52,15 @@
 ### 备份与工具
 驱动备份目录、安装包下载目录可自由选择并持久化；驱动包备份 / 还原、系统还原点、报告导出（JSON / HTML）、运行日志。
 
+### 垃圾清理
+- 独立页面，先只读扫描，再按分类勾选并确认永久删除；可查看完整路径与文件大小。
+- 内嵌 17 类自有规则：用户 / Windows 临时文件、错误报告、应用 / 系统转储、缩略图、DirectX / NVIDIA / AMD 着色器缓存，以及 Edge、Chrome、Firefox、Brave、VS Code、Discord、Slack、Spotify 缓存。
+- 临时文件保留最近七天；错误报告与转储保留最近一天，默认不勾选。浏览器及软件正在运行时跳过，退出后重新扫描。
+- 保留个人文件、密码、Cookie、收藏夹、历史记录，以及 DevUp 程序目录、驱动备份和安装包下载目录。跳过链接、只读及占用文件；清理前复核文件路径、创建时间、修改时间和大小，扫描后变化的文件需重扫。
+- 扫描和清理均支持取消。清理取消后保留已删除数量与大小；已删除文件无法恢复，重新扫描后才可再次清理。大小为成功删除文件的逻辑大小，不等同于磁盘实际可用空间增量。
+- 扫描类别高亮、旋转指示、柔和光带、数值和进度过渡沿用全局主题；切换页面停止装饰动画，并遵循 Windows 的动画开关，不显示估算文件进度。
+- 普通权限无法访问的系统项目会跳过；可使用左下角「以管理员身份重新启动」，在清理页重启时保留页面并重新扫描。当前不清理 Windows Update 下载库、WinSxS、注册表、回收站、聊天附件或个人下载文件。
+
 ### 启动方式
 首次启动会询问「以管理员权限运行 / 以普通权限运行」，可勾选「记住我的选择」，之后在「备份与工具 → 启动方式」随时改回每次询问。
 普通权限下，只有驱动安装、驱动备份还原、创建还原点等系统级操作才会单独弹 UAC；**取消 UAC 会回落到普通权限继续运行**，不会中断使用。
@@ -60,14 +69,16 @@
 
 ```
 DevUp.exe（WPF 外壳，单文件，依赖官方 .NET 8 桌面运行时）
-├─ Views/       概览 / 驱动与设备 / 软件更新 / Node.js 包 / 备份与工具
+├─ Views/       概览 / 驱动与设备 / 软件更新 / Node.js 包 / 备份与工具 / 垃圾清理
 │               + 自绘 MessageDialog、ProgressDialog、StartupDialog
 ├─ Services/    DeviceService、DriverStoreService、DriverUpdateService、
-│               SoftwareService、NpmService、BackupService、ReportService
+│               SoftwareService、NpmService、BackupService、ReportService、CleanupService
 ├─ Core/        Ctx（全局状态）、Scanner（扫描编排）、PsBridge（PowerShell 桥）、
 │               Native（提权 / 签名校验）、Ui、CommandLine
 └─ Scripts/devup.ps1   PowerShell 后端（WUA / winget / pnputil / CIM）
 ```
+
+垃圾清理走独立的 C# 调用链：`CleanupView → CleanupService → CleanupFileAccess`，使用 FluentCleaner 的 MIT 解析器读取内嵌规则，以 Windows 文件句柄复核并删除文件。清理路径不从命令行或外部规则文件传入。
 
 **调用链**：WPF → `PsBridge` → `powershell.exe -NoProfile -ExecutionPolicy Bypass -File devup.ps1 -Action <动作> -OutFile <临时文件>`
 所有动作统一返回 JSON 契约：
@@ -103,6 +114,7 @@ DevUp.exe（WPF 外壳，单文件，依赖官方 .NET 8 桌面运行时）
 | [PSWindowsUpdate](https://github.com/mgajda83/PSWindowsUpdate) | 2.2.1.5 | MIT | 通过 WUA 搜索、下载、安装驱动更新 | 模块内嵌（`lib/PSWindowsUpdate`） |
 | [MSCatalog](https://github.com/ryan-jan/MSCatalog) | 0.27.0 | MIT | 检索 Microsoft Update Catalog 上的离线更新 | 模块内嵌（`lib/MSCatalog`） |
 | [winget](https://github.com/microsoft/winget-cli) | 系统自带 | MIT | 软件清单、版本比对、升级、下载 | 调用外部 CLI |
+| [FluentCleaner](https://github.com/builtbybel/FluentCleaner) | 固定提交 `18977b7` | MIT | 解析内嵌清理规则 | 复用 5 个源码文件，见 `lib/FluentCleaner`；未复制 Winapp2 规则库 |
 | pnputil / Checkpoint-Computer / Get-PnpDevice | 系统自带 | — | 驱动导出还原、系统还原点、设备枚举 | 命令行 / CIM |
 
 > 本项目**没有**复制任何 GPL / AGPL 项目的源码（例如 SDIO 一类工具），只借鉴其思路后自行实现。
@@ -165,3 +177,7 @@ DevUp/
 便携路径回归检查：`dotnet run --project tests/DevUp.PortableTests -c Release`（含真实 PowerShell 调用；不安装软件或驱动）。
 
 窗口交互检查需在有交互桌面的 Windows 本机运行：`dotnet run --project tests/DevUp.PortableTests -c Release -- --dialogs-only`。手动拖动验证可使用 `--dialogs-preview`，测试窗口会在 45 秒后自动关闭；这两项不在托管 CI 上运行。
+
+垃圾清理安全回归：`dotnet run --project tests/DevUp.PortableTests -c Release -- --cleanup-only`，只在专用测试临时目录创建、扫描和删除文件；也包含在默认回归中。
+
+清理页交互与布局检查：`dotnet run --project tests/DevUp.PortableTests -c Release -- --cleanup-ui`，使用隔离测试文件验证扫描、取消、确认清理、按钮状态、动画结束与窄窗口布局，生成 `build/cleanup-ui*.png`；不会扫描或清理真实系统缓存。

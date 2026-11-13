@@ -1,0 +1,176 @@
+<UserControl x:Class="DevUp.Views.CleanupView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border x:Name="SummaryCard" Style="{StaticResource Card}" Padding="22,20" ClipToBounds="True">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="106" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid Width="86" Height="86" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,5,0,0">
+                    <Ellipse Fill="{StaticResource AccentSoftBrush}" />
+                    <Ellipse Stroke="{StaticResource LineBrush}" StrokeThickness="3" Margin="2" />
+                    <Path x:Name="Orbit" Data="M43,3 A40,40 0 0 1 83,43"
+                          Stroke="{StaticResource AccentBrush}" StrokeThickness="3"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" RenderTransformOrigin="0.5,0.5">
+                        <Path.RenderTransform><RotateTransform x:Name="OrbitRotation" /></Path.RenderTransform>
+                    </Path>
+                    <Path Data="{StaticResource IconCleanup}" Width="29" Height="32" Stretch="Uniform"
+                          Stroke="{StaticResource AccentBrush}" StrokeThickness="1.7"
+                          StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Grid>
+                <StackPanel Grid.Column="1" Margin="0,0,18,0">
+                    <TextBlock x:Name="SummaryLabel" Text="扫描系统与软件缓存" Style="{StaticResource SubTitle}" />
+                    <TextBlock x:Name="TotalText" Text="等待扫描" FontSize="32" FontWeight="Bold"
+                               Foreground="{StaticResource TextBrush}" Margin="0,4,0,2" />
+                    <TextBlock x:Name="CountText" Text="先扫描，再选择需要清理的项目" Style="{StaticResource SubTitle}" />
+                    <TextBlock x:Name="ActivityText" Text="准备就绪" Foreground="{StaticResource AccentBrush}"
+                               FontSize="12" Margin="0,12,0,0" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" VerticalAlignment="Center" Width="140">
+                    <Button x:Name="ScanButton" Content="开始扫描" Style="{StaticResource PrimaryButton}"
+                            Click="Scan_Click" />
+                    <Button x:Name="CleanButton" Content="清理选中项" Style="{StaticResource GhostButton}"
+                            Margin="0,8,0,0" IsEnabled="False" Click="Clean_Click" />
+                    <Button x:Name="CancelButton" Content="取消" Style="{StaticResource GhostButton}"
+                            Margin="0,8,0,0" Visibility="Collapsed" Click="Cancel_Click" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.4*" />
+                <ColumnDefinition Width="14" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <DockPanel Margin="0,0,0,12">
+                        <StackPanel x:Name="SelectionButtons" Orientation="Horizontal" DockPanel.Dock="Right">
+                            <Button Content="全选" Style="{StaticResource LinkButton}" Click="SelectAll_Click" />
+                            <Button Content="取消选择" Style="{StaticResource LinkButton}" Click="SelectNone_Click" />
+                        </StackPanel>
+                        <TextBlock Text="清理项目" Style="{StaticResource SectionTitle}" Margin="0" />
+                    </DockPanel>
+                    <DataGrid x:Name="CategoryGrid" Grid.Row="1" SelectionChanged="Category_Changed" RowHeight="58"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled" CanUserSortColumns="False">
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource AccentSoftBrush}" />
+                                        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                        <Setter Property="BorderThickness" Value="2,0,0,0" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Width="32">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding Selected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                  VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                  AutomationProperties.Name="{Binding Name}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="类别 / 项目" Width="*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Description}" />
+                                            <TextBlock Text="{Binding Group}" Foreground="{StaticResource SubTextBrush}"
+                                                       FontSize="10.5" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="大小" Width="94">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding SizeText}" Foreground="{StaticResource AccentBrush}" />
+                                            <TextBlock Text="{Binding CountText}" Foreground="{StaticResource SubTextBrush}"
+                                                       FontSize="10.5" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <TextBlock x:Name="SelectionText" Grid.Row="2" Text="扫描后显示可清理空间"
+                               Foreground="{StaticResource SubTextBrush}" FontSize="11.5" Margin="0,12,0,0"
+                               TextWrapping="Wrap" />
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource Card}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock x:Name="DetailTitle" Text="文件明细" Style="{StaticResource SectionTitle}" />
+                    <TextBlock x:Name="DetailDescription" Grid.Row="1" Text="选择左侧项目，查看清理范围和文件列表。"
+                               Style="{StaticResource SubTitle}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                    <TextBlock x:Name="DetailNote" Grid.Row="2" Foreground="{StaticResource WarnBrush}"
+                               FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,8" />
+                    <DataGrid x:Name="FileGrid" Grid.Row="3" CanUserSortColumns="False" RowHeight="34"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="文件路径" Width="*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Path}" ToolTip="{Binding Path}" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="大小" Binding="{Binding SizeText}" Width="80" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <TextBlock x:Name="FileHint" Grid.Row="4" Text="扫描仅统计，不删除文件。"
+                               Style="{StaticResource SubTitle}" FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <StackPanel Grid.Row="2" Margin="0,0,0,14">
+            <Grid Height="5" ClipToBounds="True" Margin="0,0,0,9">
+                <ProgressBar x:Name="WorkProgress" Minimum="0" Maximum="100" Value="0" Height="5"
+                             Foreground="{StaticResource AccentBrush}" Background="{StaticResource LineBrush}" />
+                <Border x:Name="Sweep" Width="90" HorizontalAlignment="Left" Visibility="Collapsed" Opacity="0.55">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#005266E7" Offset="0" />
+                            <GradientStop Color="#FF8195FF" Offset="0.5" />
+                            <GradientStop Color="#005266E7" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <Border.RenderTransform><TranslateTransform x:Name="SweepPosition" /></Border.RenderTransform>
+                </Border>
+            </Grid>
+            <TextBlock x:Name="FooterText" FontSize="11" Foreground="{StaticResource SubTextBrush}" TextWrapping="Wrap"
+                       Text="保留个人文件、登录数据与 DevUp 备份。普通权限无法访问的系统项会跳过，可使用左下角管理员入口重新扫描。" />
+        </StackPanel>
+    </Grid>
+</UserControl>

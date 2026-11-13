@@ -7,7 +7,7 @@ namespace DevUp;
 
 public partial class App : Application
 {
-    /// <summary>启动时指定的首个页面（dashboard/drivers/software/tools）。</summary>
+    /// <summary>启动时指定的首个页面（dashboard/drivers/software/npm/tools/cleanup）。</summary>
     public static string? StartupPage { get; private set; }
 
     protected override void OnStartup(StartupEventArgs e)
