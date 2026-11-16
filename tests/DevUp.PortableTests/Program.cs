@@ -3,17 +3,14 @@ using System.Text.Json;
 using DevUp.Core;
 using DevUp.Services;
 
-if (args is ["--validate-rules-pack", var rulesPath])
-{
-    var pack = CleanupRuleStore.Decode(await File.ReadAllBytesAsync(rulesPath));
-    var rules = CleanupRuleStore.ValidatePack(pack);
-    Console.WriteLine($"规则附件校验通过：{pack.Version}，{rules.Count} 项。");
-    return;
-}
-
 if (args.Contains("--network-ui"))
 {
     NetworkChecks.RunUi();
+    return;
+}
+if (args.Contains("--startup-only"))
+{
+    StartupChecks.Run();
     return;
 }
 if (args.Contains("--updates-only"))

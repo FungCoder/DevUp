@@ -44,14 +44,12 @@ public partial class CleanupView : UserControl
         _usesRuleStore = usesRuleStore;
         if (usesRuleStore) _ruleVersion = Ctx.CleanupRules.Current.Version;
         InitializeComponent();
-        foreach (var category in _service.Categories) AddRow(category);
         CategoryGrid.ItemsSource = _rows;
         IsVisibleChanged += (_, _) => UpdateActivityAnimation();
         Unloaded += (_, _) =>
         {
             Ctx.State.PropertyChanged -= OnAppStateChanged;
             SystemParameters.StaticPropertyChanged -= OnSystemSettingsChanged;
-            if (_usesRuleStore) Ctx.CleanupRules.Changed -= Rules_Changed;
             StopAnimations();
         };
         Loaded += (_, _) =>
@@ -60,9 +58,7 @@ public partial class CleanupView : UserControl
             SystemParameters.StaticPropertyChanged += OnSystemSettingsChanged;
             if (_usesRuleStore)
             {
-                Ctx.CleanupRules.Changed += Rules_Changed;
-                if (_ruleVersion != Ctx.CleanupRules.Current.Version) Rules_Changed(this, EventArgs.Empty);
-                ScanButton.ToolTip = "规则版本：" + _ruleVersion + "；可在备份与工具中检查更新。";
+                ScanButton.ToolTip = "内嵌规则版本：" + _ruleVersion + "；规则随 DevUp 一起更新。";
             }
             UpdateButtons();
             UpdateActivityAnimation();
@@ -75,17 +71,6 @@ public partial class CleanupView : UserControl
         _cancellation?.Cancel();
         CancelButton.IsEnabled = false;
         CancelButton.Content = "正在取消…";
-    }
-
-    private void Rules_Changed(object? sender, EventArgs args)
-    {
-        if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => Rules_Changed(sender, args)); return; }
-        _scan = null;
-        _service.ReloadRules();
-        _ruleVersion = Ctx.CleanupRules.Current.Version;
-        ActivityText.Text = "规则已更新，请重新扫描";
-        FileGrid.ItemsSource = null;
-        UpdateSelection();
     }
 
     private async void Scan_Click(object sender, RoutedEventArgs args)
@@ -127,12 +112,10 @@ public partial class CleanupView : UserControl
                 {
                     _scan = null;
                     FileGrid.ItemsSource = null;
-                    var categories = _service.Categories;
                     _rows.Clear();
-                    foreach (var category in categories)
-                    {
-                        AddRow(category);
-                    }
+                    EmptyText.Text = "正在扫描，完成后显示可清理项目…";
+                    EmptyText.Visibility = Visibility.Visible;
+                    SkippedPanel.Visibility = Visibility.Collapsed;
                     UpdateDetails();
                 }
                 UpdateButtons();
@@ -147,10 +130,6 @@ public partial class CleanupView : UserControl
                     AnimateBytes(update.Bytes);
                     AnimateProgress(update.Total > 0 ? update.Completed * 100d / update.Total : 0);
                     var row = _rows.FirstOrDefault(item => item.Name == update.Category);
-                    if (row is null && update.Result is { Files.Count: > 0 } category)
-                    {
-                        row = AddRow(category);
-                    }
                     if (row is not null)
                     {
                         foreach (var previous in _rows.Where(item => item.IsActive && !ReferenceEquals(item, row)))
@@ -184,7 +163,8 @@ public partial class CleanupView : UserControl
                 else
                 {
                     _scan = await _service.ScanAsync(progress, cancellation.Token);
-                    foreach (var category in _scan.Categories)
+                    _rows.Clear();
+                    foreach (var category in _scan.Categories.Where(category => category.Files.Count > 0))
                     {
                         var row = _rows.FirstOrDefault(row => row.Name == category.Name);
                         if (row is null)
@@ -194,10 +174,17 @@ public partial class CleanupView : UserControl
                         row.SetResult(category);
                     }
                     AnimateBytes(_scan.Bytes);
-                    CountText.Text = $"共 {_scan.FileCount:N0} 个文件 · {_scan.Categories.Count} 类项目";
+                    CountText.Text = $"共 {_scan.FileCount:N0} 个文件 · {_rows.Count} 类可清理项目";
                     ActivityText.Text = _scan.FileCount > 0 ? "扫描完成，选择需要清理的项目" : "扫描完成，未发现可清理文件";
-                    FooterText.Text = "扫描已完成。退出提示中正在运行的软件后重扫，可检查更多缓存；被占用的文件会在清理时跳过。";
-                    CategoryGrid.SelectedItem ??= _rows.FirstOrDefault(row => row.Files.Count > 0) ?? _rows.First();
+                    var skipped = _scan.Categories.Where(category => category.Skipped > 0 ||
+                            category.Note.StartsWith("软件正在运行", StringComparison.Ordinal))
+                        .Select(category => $"{category.Name}：{category.Note}").ToList();
+                    FooterText.Text = "扫描已完成，仅显示实际发现的可清理项目。被占用或无权限的文件会跳过。";
+                    SkippedText.Text = string.Join("\n", skipped);
+                    SkippedPanel.Visibility = skipped.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+                    EmptyText.Text = "扫描完成，未发现需要清理的文件。";
+                    EmptyText.Visibility = _rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+                    CategoryGrid.SelectedItem ??= _rows.FirstOrDefault();
                     UpdateDetails();
                 }
                 if (outcome?.Cancelled != true) AnimateProgress(100);
@@ -208,6 +195,7 @@ public partial class CleanupView : UserControl
                 _scan = null;
                 ActivityText.Text = "扫描已取消，没有删除文件";
                 FooterText.Text = "扫描未完成，重新扫描后才可清理。";
+                if (!cleaning) { _rows.Clear(); EmptyText.Text = "扫描已取消，请重新扫描。"; }
                 foreach (var row in _rows) row.Status = "扫描未完成";
             }
             catch
@@ -215,6 +203,7 @@ public partial class CleanupView : UserControl
                 _scan = null;
                 ActivityText.Text = cleaning ? "清理中断，请重新扫描" : "扫描失败，请重试";
                 FooterText.Text = cleaning ? "部分文件可能已删除，请重新扫描查看剩余内容。" : "本次没有删除文件。";
+                if (!cleaning) { _rows.Clear(); EmptyText.Text = "扫描失败，请重试。"; }
                 throw;
             }
             finally
@@ -237,7 +226,7 @@ public partial class CleanupView : UserControl
         CleanButton.IsEnabled = !Ctx.State.IsBusy && _scan is not null &&
             _rows.Any(row => row.Selected && row.Files.Count > 0);
         CategoryGrid.IsEnabled = !IsRunning;
-        SelectionButtons.IsEnabled = !Ctx.State.IsBusy;
+        SelectionButtons.IsEnabled = !Ctx.State.IsBusy && _scan is not null && _rows.Count > 0;
         CancelButton.Visibility = IsRunning ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -263,7 +252,14 @@ public partial class CleanupView : UserControl
 
     private void UpdateDetails()
     {
-        if (CategoryGrid.SelectedItem is not CleanupRow row) return;
+        if (CategoryGrid.SelectedItem is not CleanupRow row)
+        {
+            DetailTitle.Text = "文件明细";
+            DetailDescription.Text = "扫描完成后，选择可清理项目查看文件。";
+            DetailNote.Text = "";
+            FileGrid.ItemsSource = null;
+            return;
+        }
         DetailTitle.Text = row.Name;
         DetailDescription.Text = row.Description;
         DetailNote.Text = row.Status;

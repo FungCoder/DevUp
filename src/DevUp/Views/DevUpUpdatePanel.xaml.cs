@@ -16,7 +16,6 @@ public partial class DevUpUpdatePanel : UserControl
             AutoCheck.IsChecked = Ctx.Settings.AutoCheckDevUpUpdates;
             _ready = true;
             Ctx.Updates.Changed += Updates_Changed;
-            Ctx.CleanupRules.Changed += Updates_Changed;
             Ctx.State.PropertyChanged += State_Changed;
             Refresh();
         };
@@ -24,7 +23,6 @@ public partial class DevUpUpdatePanel : UserControl
         {
             _ready = false;
             Ctx.Updates.Changed -= Updates_Changed;
-            Ctx.CleanupRules.Changed -= Updates_Changed;
             Ctx.State.PropertyChanged -= State_Changed;
         };
     }
@@ -40,29 +38,17 @@ public partial class DevUpUpdatePanel : UserControl
         VersionText.Text = $"程序 {typeof(DevUpUpdatePanel).Assembly.GetName().Version!.ToString(3)} · " +
             $"规则 {Ctx.CleanupRules.Current.Version} · 扩展 {Ctx.CleanupRules.Rules.Count} 项";
         UpdateStatus.Text = Ctx.Updates.Status;
-        RuleStatus.Text = Ctx.Updates.Available?.RuleNote ?? "程序与规则分别更新，离线继续使用现有版本";
+        RuleStatus.Text = "清理规则及排除规则均内嵌于 DevUp.exe，随程序一起更新，无需单独下载。";
         CheckButton.IsEnabled = !Ctx.State.IsBusy && !Ctx.Updates.IsChecking;
         ProgramButton.IsEnabled = !Ctx.State.IsBusy && Ctx.Updates.HasProgramUpdate;
-        RulesButton.IsEnabled = !Ctx.State.IsBusy && Ctx.Updates.Available?.RulesAvailable == true;
         AutoCheck.IsEnabled = !Ctx.State.IsBusy;
     }
 
     private async void Check_Click(object sender, RoutedEventArgs args)
     {
-        await Ctx.RunAsync("正在检查 DevUp 与规则更新…", () =>
+        await Ctx.RunAsync("正在检查 DevUp 更新…", () =>
         {
             ProgressDialog.Run("检查更新", "连接 GitHub 正式 Release…", async (_, ct) => await Ctx.Updates.CheckAsync(ct));
-            return Task.CompletedTask;
-        });
-    }
-
-    private async void Rules_Click(object sender, RoutedEventArgs args)
-    {
-        await Ctx.RunAsync("正在更新清理规则…", () =>
-        {
-            var done = ProgressDialog.Run("更新清理规则", "下载并校验规则数据包…",
-                async (progress, ct) => await Ctx.Updates.InstallRulesAsync(progress, ct));
-            if (done) Ui.Success("规则已更新", "无需重启程序，请重新扫描垃圾文件后再清理。");
             return Task.CompletedTask;
         });
     }

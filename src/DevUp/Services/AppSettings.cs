@@ -23,7 +23,7 @@ public sealed class AppSettings
     /// <summary>不含凭据的代理地址，用于软件及 DevUp 自身更新。</summary>
     public string SoftwareProxyAddress { get; set; } = "";
 
-    /// <summary>启动时至多每天检查一次 DevUp 程序及规则更新。</summary>
+    /// <summary>启动时至多每天检查一次 DevUp 更新，规则随程序内嵌发布。</summary>
     public bool AutoCheckDevUpUpdates { get; set; } = true;
     public DateTimeOffset LastDevUpUpdateCheckUtc { get; set; }
 

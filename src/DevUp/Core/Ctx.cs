@@ -28,7 +28,7 @@ public static class Ctx
     public static BackupService Backups { get; } = new();
     public static NpmService Npm { get; } = new();
     internal static CleanupRuleStore CleanupRules { get; } = new();
-    internal static DevUpUpdateService Updates { get; } = new(CleanupRules);
+    internal static DevUpUpdateService Updates { get; } = new();
 
     /// <summary>系统概览信息（单例，属性变化会通知界面）。</summary>
     public static SystemInfo Info { get; } = new();

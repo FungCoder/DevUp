@@ -1,10 +1,10 @@
 # DevUp · 驱动与软件更新助手
 
-> 一个 Windows 桌面小工具：**看清设备健康状况、装对官方驱动、升级软件、清理系统与软件缓存**。
+> 一个 Windows 桌面小工具：**看清设备健康状况、装对官方驱动、升级软件、管理自启动、清理系统与软件缓存**。
 > 界面用 WPF 自绘，更新逻辑复用成熟的开源内核，以**单个 DevUp.exe** 分发，使用官方 **.NET 8 桌面运行时（x64）**，无需安装 DevUp。
 
 - 作者：风之翼灵'Blog · <https://www.fungj.com>
-- 版本：1.3.0（Windows 10 19041+ / Windows 11，x64）
+- 版本：1.4.0（Windows 10 19041+ / Windows 11，x64）
 - 许可证：MIT（第三方组件各自遵循其许可证，见 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)）
 
 ![DevUp 概览（系统信息与个人路径已打码）](docs/images/ui-dashboard-redacted.png)
@@ -69,13 +69,23 @@
 普通权限下，只有驱动安装、驱动备份还原、创建还原点等系统级操作才会单独弹 UAC；**取消 UAC 会回落到普通权限继续运行**，不会中断使用。
 
 ### DevUp 与规则更新
-「备份与工具」顶部统一检查本项目 GitHub 正式 Release 的程序和规则附件。默认仅在启动时、每天至多检查一次，可关闭；没有后台常驻进程。发现更新时侧栏显示入口，手动检查也使用同一逻辑。只信任固定仓库 `FungCoder/DevUp`，按 GitHub 附件登记的 SHA256 与大小校验；缺少校验信息时不自动安装。
+「备份与工具」顶部检查本项目 GitHub 正式 Release 的 `DevUp.exe`。默认仅在启动时、每天至多检查一次，可关闭；没有后台常驻进程。发现更新时侧栏显示入口。只信任固定仓库 `FungCoder/DevUp`，按 GitHub 附件登记的 SHA256 与大小校验；缺少校验信息时不自动安装。
 
 程序下载后验证产品和版本，通过短时 PowerShell helper 等待主进程退出再替换、重启。复制或启动调用失败时尝试还原；保留一份旧版在 `DevUpData/updates/DevUp.previous.exe`。进程启动后的应用内部故障不能由 helper 保证自动恢复，可关闭程序后用该备份替换原 exe。设置、备份及下载目录保留。helper 完成后清理本次临时文件。
 
-规则数据包独立为 `DevUp.rules.json.gz`：兼容性检查后原子替换，保留上一份可用版本；损坏时回退上一版或内嵌规则。更新后旧扫描结果失效，必须重扫。网络失败不影响已有程序和规则。直接分发单个 exe 时仍可离线使用全部内嵌规则，无需额外安装更新器或运行环境。
+清理规则和排除规则全部内嵌在 `DevUp.exe`，随程序一起更新；发布及下载只需要这一个执行文件。不生成或下载独立规则附件，旧版下载过的外部规则不再覆盖内嵌版本。离线也可使用全部内嵌规则。
 
-首次发布这套更新机制时，需在同一正式 Release 上传新版 `DevUp.exe` 和规则附件。后续只更新规则时，可递增规则包内部版本后替换最新正式 Release 中的同名规则附件，无需重新发布 exe。客户端使用该正式 Release 的最新附件与其 SHA256，不直接执行上游 master 分支内容。规则维护与发布步骤见 [docs/UPDATES.md](docs/UPDATES.md)。
+规则调整审核后重新构建程序并递增程序版本，正式 Release 仅上传 `DevUp.exe`。规则维护与发布步骤见 [docs/UPDATES.md](docs/UPDATES.md)。
+
+### 自启动管理
+
+新增独立页面，扫描注册表 Run / RunOnce（含计算机 32 位视图）、用户和公共启动目录、所有子目录中的隐藏及普通开机/登录任务，以及自动或触发启动的 Windows 服务。支持搜索、多选禁用、恢复 DevUp 保存的原配置；同一确切可执行文件的入口可以一起禁用，共享命令解释器不自动关联。
+
+禁用直接移走注册表启动值、移动启动文件、设置任务 Enabled 或通过服务管理器设置 Disabled；每项修改前保存配置，完成后重新扫描真实来源。恢复保留注册表原始类型、环境变量、文件内容和服务原启动类型，不覆盖已经改变的命令。恢复数据保存在对应用户/计算机权限范围的 `SOFTWARE\DevUp\StartupBackups`，启动文件保存在原启动目录的 `DevUp.DisabledStartup` 子目录。
+
+Windows 维护任务、Windows 目录中的服务和受保护服务仅展示。系统范围的操作使用现有 UAC 提权机制；换用其他管理员账户时停止操作，避免修改错误用户。扫描失败及访问受限会明确列出。Store StartupTask、策略、驱动等其他启动机制不在当前管理范围；软件可能重新创建入口，刷新后会重新显示。系统配置复核通过不等于已经实测重启；本功能不终止正在运行的进程或服务，也不安装常驻拦截器。
+
+垃圾清理页面在扫描前保持空列表，扫描完成后只显示实际存在候选文件的项目；空结果、扫描取消和失败均不能直接清理。
 
 ## 3. 架构
 
@@ -195,4 +205,6 @@ DevUp/
 
 清理页交互与布局检查：`dotnet run --project tests/DevUp.PortableTests -c Release -- --cleanup-ui`，使用隔离测试文件验证扫描、取消、确认清理、按钮状态、动画结束与窄窗口布局，生成 `build/cleanup-ui*.png`；不会扫描或清理真实系统缓存。
 
-程序及规则更新检查：`dotnet run --project tests/DevUp.PortableTests -c Release -- --updates-only`，使用内存 HTTP 响应与隔离临时目录验证下载、校验、规则回退和真实 PowerShell 替换，不启动被替换程序，不修改真实 DevUp.exe。
+程序及内嵌规则检查：`dotnet run --project tests/DevUp.PortableTests -c Release -- --updates-only`，使用内存 HTTP 响应与隔离临时目录验证单文件下载、校验、规则安全策略和真实 PowerShell 替换，不启动被替换程序，不修改真实 DevUp.exe。
+
+自启配置检查：`dotnet run --project tests/DevUp.PortableTests -c Release -- --startup-only`。只创建唯一命名的无副作用测试入口，验证禁用、恢复、旧快照拒绝及配置冲突并清理。普通权限验证用户注册表和启动文件夹；任务修改需要管理员测试环境，服务及实际重启效果需另外验证。

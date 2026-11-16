@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -38,18 +37,11 @@ internal static class UpdateChecks
     private static CleanupRulePack Pack(string version, string rules = SafeRules)
         => new(1, version, "1.3.0", new string('a', 40), "CC-BY-SA-4.0", rules);
 
-    private static byte[] Encode(CleanupRulePack pack)
-    {
-        using var memory = new MemoryStream();
-        using (var gzip = new GZipStream(memory, CompressionLevel.SmallestSize, leaveOpen: true))
-            JsonSerializer.Serialize(gzip, pack);
-        return memory.ToArray();
-    }
-
     private static string Hash(byte[] data) => Convert.ToHexString(SHA256.HashData(data)).ToLowerInvariant();
     private static object Asset(string name, byte[] data, string? url = null, string? digest = null)
         => new { name, size = data.Length, digest = digest ?? "sha256:" + Hash(data),
-            browser_download_url = url ?? "https://github.com/FungCoder/DevUp/releases/download/v1.3.0/" + name };
+            browser_download_url = url ?? "https://github.com/FungCoder/DevUp/releases/download/v" +
+                typeof(CleanupService).Assembly.GetName().Version!.ToString(3) + "/" + name };
     private static byte[] Release(string version, params object[] assets)
         => JsonSerializer.SerializeToUtf8Bytes(new { tag_name = "v" + version, draft = false,
             prerelease = false, body = "test", assets });
@@ -69,32 +61,12 @@ internal static class UpdateChecks
             throw new InvalidOperationException(message);
         }
         using var fixture = new CleanupChecks.Fixture();
-        var directory = Path.Combine(fixture.Root, "rules");
-        var builtIn = Pack("2026.11.16.1");
-        var store = new CleanupRuleStore(directory, builtIn);
-        var first = Encode(Pack("2026.11.17.1"));
-        store.Install(first, Hash(first));
-        Check(store.Current.Version == "2026.11.17.1" && File.Exists(Path.Combine(directory, "current.gz")), "规则安装没有持久化");
-        Reject(() => store.Install(first, new string('0', 64)), "错误规则哈希未被拒绝");
-        var unsafePack = Encode(Pack("2026.11.18.1", SafeRules.Replace("Vendor\\Cache", "Vendor\\..\\Documents")));
-        Reject(() => store.Install(unsafePack, Hash(unsafePack)), "危险规则路径未被拒绝");
-        var future = Encode(Pack("2026.11.18.1") with { MinimumAppVersion = "99.0" });
-        Reject(() => store.Install(future, Hash(future)), "规则包引擎兼容检查没有生效");
-        Check(store.Current.Version == "2026.11.17.1", "无效规则更新改变了当前版本");
-        var second = Encode(Pack("2026.11.18.1"));
-        store.Install(second, Hash(second));
-        File.WriteAllText(Path.Combine(directory, "current.gz"), "corrupt");
-        var fallback = new CleanupRuleStore(directory, builtIn);
-        Check(fallback.Current.Version == "2026.11.17.1", "当前规则损坏没有回退上一份规则");
-        var repaired = Encode(Pack("2026.11.19.1"));
-        fallback.Install(repaired, Hash(repaired));
-        File.WriteAllText(Path.Combine(directory, "current.gz"), "corrupt");
-        Check(new CleanupRuleStore(directory, builtIn).Current.Version == "2026.11.17.1",
-            "回退后安装更新覆盖了上一份可用规则");
-        File.WriteAllText(Path.Combine(directory, "previous.gz"), "corrupt");
-        Check(new CleanupRuleStore(directory, builtIn).Current.Version == builtIn.Version, "本地两份规则损坏没有回退内嵌规则");
-        var bomb = Encode(Pack("2026.11.18.1", new string('x', 2_000_000)));
-        Reject(() => CleanupRuleStore.Decode(bomb), "没有限制压缩规则的解压大小");
+        var store = new CleanupRuleStore();
+        Check(store.Rules.Count > 0 && store.Current.Rules.Length > 0, "单文件内嵌规则未加载");
+        Reject(() => CleanupRuleStore.ValidatePack(Pack("2026.11.18.1") with { MinimumAppVersion = "99.0" }),
+            "内嵌规则兼容性检查没有生效");
+        Reject(() => CleanupRuleStore.ValidatePack(Pack("2026.11.18.1",
+            SafeRules.Replace("Vendor\\Cache", "Vendor\\..\\Documents"))), "危险规则路径未被拒绝");
         Check(CleanupRulePolicy.Adapt(SafeRules).Contains("Default=False"), "适配器没有保持扩展规则默认未勾选");
         Reject(() => CleanupRulePolicy.Validate(SafeRules.Replace("Vendor\\Cache", "Vendor\\Backups\\Cache")),
             "备份子目录被识别为可清理缓存");
@@ -129,28 +101,28 @@ internal static class UpdateChecks
             "浏览器运行时扩展缓存未跳过，或没有保留退出软件的提示");
 
         var binary = await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "DevUp.exe"));
-        var rules = Encode(Pack("2026.11.19.1"));
-        var metadata = Release("1.3.0", Asset("DevUp.exe", binary), Asset(CleanupRuleStore.AssetName, rules));
+        var currentVersion = typeof(CleanupService).Assembly.GetName().Version!;
+        // 旧 Release 即使仍有独立规则附件，也只能下载 DevUp.exe。
+        var metadata = Release(currentVersion.ToString(3), Asset("DevUp.exe", binary), Asset("DevUp.rules.json.gz", [1, 2, 3]));
         using var server = new MemoryServer(request => request.RequestUri!.Host == "api.github.com" ? metadata :
-            request.RequestUri.AbsolutePath.EndsWith(CleanupRuleStore.AssetName) ? rules : binary);
-        var updateStore = new CleanupRuleStore(Path.Combine(fixture.Root, "updates-rules"), builtIn);
-        var updater = new DevUpUpdateService(updateStore, () => new HttpClient(server, false), new Version(1, 2, 0));
+            request.RequestUri.AbsolutePath.EndsWith("DevUp.exe") ? binary :
+                throw new InvalidOperationException("客户端不应下载独立规则附件"));
+        var updater = new DevUpUpdateService(() => new HttpClient(server, false), new Version(1, 2, 0));
         await updater.CheckAsync();
-        Check(updater.HasProgramUpdate && updater.Available!.RulesAvailable, "没有分别识别程序和规则更新");
-        await updater.InstallRulesAsync(null, default);
-        Check(updateStore.Current.Version == "2026.11.19.1" && !updater.Available!.RulesAvailable, "规则独立更新失败");
+        Check(updater.HasProgramUpdate && server.Requests == 1, "检查更新下载了独立规则或未发现程序更新");
         var downloaded = await updater.DownloadProgramAsync(Path.Combine(fixture.Root, "download"), null, default);
         Check(Hash(await File.ReadAllBytesAsync(downloaded)) == Hash(binary), "新版程序下载或校验失败");
-        var sameVersion = new DevUpUpdateService(updateStore, () => new HttpClient(server, false), new Version(1, 3, 0, 0));
+        var sameVersion = new DevUpUpdateService(() => new HttpClient(server, false),
+            new Version(currentVersion.Major, currentVersion.Minor, currentVersion.Build, 0));
         await sameVersion.CheckAsync();
-        Check(!sameVersion.HasProgramUpdate && !sameVersion.Available!.RulesAvailable,
+        Check(!sameVersion.HasProgramUpdate,
             "三段与四段版本号比较导致重复更新");
 
         using var badServer = new MemoryServer(request => request.RequestUri!.Host == "api.github.com" ? metadata : [1, 2, 3]);
-        var tampered = new DevUpUpdateService(new CleanupRuleStore(Path.Combine(fixture.Root, "bad-rules"), builtIn),
+        var tampered = new DevUpUpdateService(
             () => new HttpClient(badServer, false), new Version(1, 2, 0));
         await tampered.CheckAsync();
-        Check(tampered.HasProgramUpdate && !tampered.Available!.RulesAvailable, "损坏规则阻止了独立的程序更新提示");
+        Check(tampered.HasProgramUpdate, "损坏程序附件影响了版本发现");
         try
         {
             await tampered.DownloadProgramAsync(Path.Combine(fixture.Root, "bad-download"), null, default);
@@ -182,7 +154,7 @@ internal static class UpdateChecks
             await sameVersion.CheckOnStartupAsync();
             Check(after > before && server.Requests == after, "启动检查没有限制每天至多一次");
             using var offlineServer = new MemoryServer(_ => throw new HttpRequestException("offline"));
-            var offline = new DevUpUpdateService(updateStore, () => new HttpClient(offlineServer, false));
+            var offline = new DevUpUpdateService(() => new HttpClient(offlineServer, false));
             Ctx.Settings.LastDevUpUpdateCheckUtc = DateTimeOffset.UtcNow.AddDays(-2);
             await offline.CheckOnStartupAsync();
             await offline.CheckOnStartupAsync();

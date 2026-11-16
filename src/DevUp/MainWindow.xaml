@@ -62,6 +62,9 @@
                     <ToggleButton x:Name="NavCleanup" Style="{StaticResource NavButton}"
                                   Tag="{StaticResource IconCleanup}"
                                   Content="垃圾清理" Checked="Nav_Checked" />
+                    <ToggleButton x:Name="NavStartup" Style="{StaticResource NavButton}"
+                                  Tag="{StaticResource IconStartup}"
+                                  Content="自启动管理" Checked="Nav_Checked" />
                 </StackPanel>
 
                 <Border Grid.Row="2" BorderBrush="#28354C" BorderThickness="0,1,0,0" Padding="22,16">

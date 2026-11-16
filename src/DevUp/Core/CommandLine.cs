@@ -54,7 +54,9 @@ public static class CommandLine
             // 提权子进程没有消息循环，不能在 UI 线程上同步等待异步方法：
             // 那样会捕获 WPF 的 SynchronizationContext 并永久挂起（进程不退出）。
             // 放到线程池执行，避免死锁。
-            var result = Task.Run(() => PsBridge.RunAsync(action, extra, elevated: false)).GetAwaiter().GetResult();
+            var result = action == Services.StartupService.Action
+                ? Services.StartupService.HandleElevated(extra)
+                : Task.Run(() => PsBridge.RunAsync(action, extra, elevated: false)).GetAwaiter().GetResult();
             File.WriteAllText(outFile, result.GetRawText(), new System.Text.UTF8Encoding(false));
             return true;
         }

@@ -3,14 +3,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Border Style="{StaticResource Card}" Margin="0,0,0,12">
         <StackPanel>
-            <TextBlock Text="DevUp 与清理规则更新" Style="{StaticResource SectionTitle}" />
+            <TextBlock Text="DevUp 更新 · 清理规则已内嵌" Style="{StaticResource SectionTitle}" />
             <TextBlock x:Name="VersionText" Foreground="{StaticResource SubTextBrush}" TextWrapping="Wrap" />
             <TextBlock x:Name="UpdateStatus" Text="尚未检查更新" Margin="0,8,0,0" TextWrapping="Wrap" />
             <TextBlock x:Name="RuleStatus" Foreground="{StaticResource SubTextBrush}" Margin="0,4,0,10" TextWrapping="Wrap" />
             <WrapPanel>
                 <Button x:Name="CheckButton" Content="检查更新" Style="{StaticResource GhostButton}" Click="Check_Click" Margin="0,0,8,8" />
                 <Button x:Name="ProgramButton" Content="更新程序并重启" Style="{StaticResource PrimaryButton}" Click="Program_Click" IsEnabled="False" Margin="0,0,8,8" />
-                <Button x:Name="RulesButton" Content="更新清理规则" Style="{StaticResource GhostButton}" Click="Rules_Click" IsEnabled="False" Margin="0,0,8,8" />
                 <Button Content="查看发布说明" Style="{StaticResource LinkButton}" Click="Release_Click" Margin="0,0,0,8" />
             </WrapPanel>
             <CheckBox x:Name="AutoCheck" Content="启动时检查更新（每天至多一次）" Margin="0,4,0,0"

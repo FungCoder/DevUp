@@ -42,7 +42,3 @@ Write-Host ''
 Write-Host "输出：$exe" -ForegroundColor Green
 Write-Host "大小：$size MB" -ForegroundColor Green
 Write-Host '仅分发 DevUp.exe；运行需要官方 .NET 8 Desktop Runtime（x64）。' -ForegroundColor Green
-
-# 独立规则附件供 GitHub Release 使用，不放入单文件程序的发布目录。
-& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'build-rules.ps1')
-if ($LASTEXITCODE -ne 0) { throw '规则附件生成失败' }

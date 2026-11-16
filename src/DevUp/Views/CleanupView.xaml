@@ -67,6 +67,9 @@
                         </StackPanel>
                         <TextBlock Text="清理项目" Style="{StaticResource SectionTitle}" Margin="0" />
                     </DockPanel>
+                    <TextBlock x:Name="EmptyText" Grid.Row="1" Text="请先扫描，完成后显示实际可清理的项目。"
+                               TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="{StaticResource SubTextBrush}" Margin="16" />
                     <DataGrid x:Name="CategoryGrid" Grid.Row="1" SelectionChanged="Category_Changed" RowHeight="58"
                               ScrollViewer.HorizontalScrollBarVisibility="Disabled" CanUserSortColumns="False">
                         <DataGrid.RowStyle>
@@ -155,6 +158,9 @@
         </Grid>
 
         <StackPanel Grid.Row="2" Margin="0,0,0,14">
+            <Expander x:Name="SkippedPanel" Header="扫描跳过的项目与原因" Visibility="Collapsed" Margin="0,0,0,8">
+                <ScrollViewer MaxHeight="100"><TextBlock x:Name="SkippedText" TextWrapping="Wrap" /></ScrollViewer>
+            </Expander>
             <Grid Height="5" ClipToBounds="True" Margin="0,0,0,9">
                 <ProgressBar x:Name="WorkProgress" Minimum="0" Maximum="100" Value="0" Height="5"
                              Foreground="{StaticResource AccentBrush}" Background="{StaticResource LineBrush}" />

@@ -8,27 +8,24 @@ using DevUp.Core;
 namespace DevUp.Services;
 
 internal sealed record UpdateAsset(string Name, Uri Url, long Size, string Digest);
-internal sealed record DevUpUpdateInfo(Version Version, Uri Page, string Notes,
-    UpdateAsset? Program, UpdateAsset? Rules, bool RulesAvailable, string RuleNote);
+internal sealed record DevUpUpdateInfo(Version Version, Uri Page, string Notes, UpdateAsset? Program);
 
-/// <summary>只访问本项目正式 Release，程序与规则分别比较，网络检查不常驻。</summary>
+/// <summary>只访问本项目正式 Release；规则随单文件程序一起更新，网络检查不常驻。</summary>
 internal sealed class DevUpUpdateService
 {
     internal const string Repository = "FungCoder/DevUp";
-    private readonly CleanupRuleStore _rules;
     private readonly Func<HttpClient> _createClient;
     private readonly Version _currentVersion;
     internal DevUpUpdateInfo? Available { get; private set; }
     internal string Status { get; private set; } = "尚未检查更新";
     internal bool IsChecking { get; private set; }
     internal bool HasProgramUpdate => Available is { Program: not null } info && info.Version > _currentVersion;
-    internal bool HasUpdates => HasProgramUpdate || Available?.RulesAvailable == true;
+    internal bool HasUpdates => HasProgramUpdate;
     internal event EventHandler? Changed;
 
-    internal DevUpUpdateService(CleanupRuleStore rules, Func<HttpClient>? createClient = null,
+    internal DevUpUpdateService(Func<HttpClient>? createClient = null,
         Version? currentVersion = null)
     {
-        _rules = rules;
         _createClient = createClient ?? (() => SoftwareNetwork.CreateClient(Ctx.Settings));
         _currentVersion = Normalize(currentVersion ?? typeof(DevUpUpdateService).Assembly.GetName().Version!);
     }
@@ -57,31 +54,10 @@ internal sealed class DevUpUpdateService
                 throw new InvalidDataException("GitHub 正式版本信息无效。");
             version = Normalize(version);
             var program = FindAsset(release, "DevUp.exe", 32 * 1024 * 1024);
-            var rules = FindAsset(release, CleanupRuleStore.AssetName, CleanupRuleStore.MaximumCompressedBytes);
-            var ruleAvailable = false;
-            var ruleNote = "此正式版本未附带独立规则包，继续使用现有规则";
-            if (rules is not null)
-            {
-                if (rules.Digest.Equals(_rules.Digest, StringComparison.OrdinalIgnoreCase)) ruleNote = "规则已是当前发布版本";
-                else
-                {
-                    try
-                    {
-                        var pack = CleanupRuleStore.Decode(await DownloadRulesAsync(rules, null, ct));
-                        CleanupRuleStore.ValidatePack(pack);
-                        ruleAvailable = Version.Parse(pack.Version) > Version.Parse(_rules.Current.Version);
-                        ruleNote = ruleAvailable ? $"规则可更新至 {pack.Version}" : "规则已是当前发布版本";
-                    }
-                    catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException or ArgumentException or HttpRequestException)
-                    {
-                        ruleNote = "规则包暂不可用或需要更新 DevUp：" + ex.Message;
-                    }
-                }
-            }
             Available = new(version, new Uri($"https://github.com/{Repository}/releases/tag/" +
                 Uri.EscapeDataString(release.GetProperty("tag_name").GetString()!)),
                 release.TryGetProperty("body", out var body) ? body.GetString() ?? "" : "",
-                program, rules, ruleAvailable, ruleNote);
+                program);
             Status = HasProgramUpdate ? $"发现 DevUp {version.ToString(3)}" :
                 version < _currentVersion ? "当前 DevUp 版本较新，无需更新" : "DevUp 已是当前正式版本";
             if (version > _currentVersion && program is null) Status = "发现新版，但缺少可校验的程序附件，请打开发布页下载";
@@ -112,17 +88,6 @@ internal sealed class DevUpUpdateService
         catch (Exception ex) { Ui.Log("DevUp 更新检查未完成：" + ex.Message, "WARN"); }
     }
 
-    internal async Task InstallRulesAsync(IProgress<ProgressInfo>? progress, CancellationToken ct)
-    {
-        var asset = Available?.Rules ?? throw new InvalidOperationException("请先检查规则更新。");
-        var data = await DownloadRulesAsync(asset, progress, ct);
-        ct.ThrowIfCancellationRequested();
-        _rules.Install(data, asset.Digest);
-        Available = Available! with { RulesAvailable = false, RuleNote = "规则已更新，请重新扫描" };
-        Status = HasProgramUpdate ? $"规则已更新；仍可更新 DevUp {Available.Version.ToString(3)}" : "规则更新完成";
-        Changed?.Invoke(this, EventArgs.Empty);
-    }
-
     internal async Task<string> DownloadProgramAsync(string directory,
         IProgress<ProgressInfo>? progress, CancellationToken ct)
     {
@@ -139,18 +104,6 @@ internal sealed class DevUpUpdateService
             return path;
         }
         catch { if (File.Exists(path)) File.Delete(path); throw; }
-    }
-
-    private async Task<byte[]> DownloadRulesAsync(UpdateAsset asset, IProgress<ProgressInfo>? progress, CancellationToken ct)
-    {
-        var temporary = Path.Combine(PortablePaths.Temp, "rules-" + Guid.NewGuid().ToString("N"));
-        PortablePaths.EnsureWritableDirectory(PortablePaths.Temp);
-        try
-        {
-            await DownloadAsync(asset, temporary, progress, ct);
-            return await File.ReadAllBytesAsync(temporary, ct);
-        }
-        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
     private async Task DownloadAsync(UpdateAsset asset, string target,

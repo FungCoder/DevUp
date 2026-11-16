@@ -10,13 +10,13 @@
 
     <AssemblyName>DevUp</AssemblyName>
     <RootNamespace>DevUp</RootNamespace>
-    <Version>1.3.0</Version>
+    <Version>1.4.0</Version>
     <Product>DevUp 驱动与软件更新助手</Product>
     <AssemblyTitle>DevUp</AssemblyTitle>
     <Company>风之翼灵'Blog</Company>
     <Copyright>© 2026 风之翼灵'Blog (www.fungj.com). 保留所有权利。</Copyright>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Description>驱动与软件更新、系统垃圾与软件缓存清理工具，复用 PSWindowsUpdate / Nefarius.Utilities.DeviceManagement / winget / FluentCleaner 规则解析器</Description>
+    <Description>驱动与软件更新、自启动管理、系统垃圾与软件缓存清理工具，复用 Windows 原生能力 / PSWindowsUpdate / Nefarius.Utilities.DeviceManagement / winget / FluentCleaner 规则解析器</Description>
 
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
