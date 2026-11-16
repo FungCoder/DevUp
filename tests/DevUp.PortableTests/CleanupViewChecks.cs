@@ -104,7 +104,8 @@ internal static class CleanupViewChecks
         void SaveImage(string name)
         {
             window.UpdateLayout();
-            var bitmap = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight,
+            var content = (FrameworkElement)window.Content;
+            var bitmap = new RenderTargetBitmap((int)content.ActualWidth, (int)content.ActualHeight,
                 96, 96, PixelFormats.Pbgra32);
             bitmap.Render((Visual)window.Content);
             var encoder = new PngBitmapEncoder();
@@ -181,6 +182,17 @@ internal static class CleanupViewChecks
                 ((ProgressBar)view.FindName("WorkProgress")).Value == 100, "任务完成后动画未停止或进度错误");
             Check(File.Exists(Path.Combine(fixture.Root, "Temp/recent.tmp")), "UI 清理误删了新临时文件");
             SaveImage("cleanup-ui-complete.png");
+            var updates = new DevUpUpdatePanel();
+            var updateHost = new StackPanel();
+            updateHost.Children.Add(updates);
+            ((Border)window.Content).Child = updateHost;
+            window.Height = 332;
+            await Task.Delay(100);
+            Check(((TextBlock)updates.FindName("VersionText")).Text.Contains("规则") &&
+                ((Button)updates.FindName("CheckButton")).IsEnabled &&
+                !((Button)updates.FindName("ProgramButton")).IsEnabled,
+                "统一更新卡片的初始信息或按钮状态错误");
+            SaveImage("devup-updates-ui.png");
         }
         finally
         {

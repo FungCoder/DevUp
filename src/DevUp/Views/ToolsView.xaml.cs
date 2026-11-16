@@ -18,10 +18,78 @@ public partial class ToolsView : UserControl
             UpdatePaths();
             RefreshBackups();
             LoadStartupMode();
+            LoadSoftwareNetwork();
         };
     }
 
     private bool _startupModeReady;
+
+    internal void ShowUpdates()
+        => Dispatcher.BeginInvoke(new Action(() => DevUpUpdates.BringIntoView()));
+
+    private void LoadSoftwareNetwork()
+    {
+        foreach (ComboBoxItem item in CmbSoftwareProxy.Items)
+            if (item.Tag as string == Ctx.Settings.SoftwareProxyMode) CmbSoftwareProxy.SelectedItem = item;
+        SoftwareProxyAddress.Text = Ctx.Settings.SoftwareProxyAddress;
+    }
+
+    private void CmbSoftwareProxy_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SoftwareProxyAddress is not null)
+            SoftwareProxyAddress.IsEnabled = (CmbSoftwareProxy.SelectedItem as ComboBoxItem)?.Tag as string == SoftwareNetwork.CustomMode;
+    }
+
+    private AppSettings ReadSoftwareNetwork()
+    {
+        var mode = SoftwareNetwork.ValidateMode((CmbSoftwareProxy.SelectedItem as ComboBoxItem)?.Tag as string ?? "");
+        var address = mode == SoftwareNetwork.CustomMode
+            ? SoftwareNetwork.ValidateProxy(SoftwareProxyAddress.Text).AbsoluteUri : "";
+        return new AppSettings { SoftwareProxyMode = mode, SoftwareProxyAddress = address };
+    }
+
+    private void BtnSaveSoftwareNetwork_Click(object sender, RoutedEventArgs e)
+    {
+        var oldMode = Ctx.Settings.SoftwareProxyMode;
+        var oldAddress = Ctx.Settings.SoftwareProxyAddress;
+        try
+        {
+            var settings = ReadSoftwareNetwork();
+            Ctx.Settings.SoftwareProxyMode = settings.SoftwareProxyMode;
+            Ctx.Settings.SoftwareProxyAddress = settings.SoftwareProxyAddress;
+            Ctx.Settings.Save();
+            SoftwareNetworkResult.Text = "网络设置已保存，对后续软件检查、更新和安装包下载生效。";
+        }
+        catch (Exception ex)
+        {
+            Ctx.Settings.SoftwareProxyMode = oldMode;
+            Ctx.Settings.SoftwareProxyAddress = oldAddress;
+            Ui.Warn("无法保存网络设置", ex.Message);
+        }
+    }
+
+    private void BtnTestSoftwareNetwork_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var settings = ReadSoftwareNetwork();
+            var url = SoftwareTestUrl.Text.Trim();
+            var result = "";
+            var done = ProgressDialog.Run("正在测试软件网络", "检查所填地址的响应", async (progress, ct) =>
+            {
+                progress.Report(new ProgressInfo { Percent = -1, Status = "正在连接测试地址…" });
+                await SoftwareNetwork.PrepareWingetAsync(settings, ct);
+                result = await SoftwareNetwork.TestAsync(settings, url, ct);
+            });
+            SoftwareNetworkResult.Text = done ? result : "连接测试已取消。";
+        }
+        catch (OperationCanceledException) { SoftwareNetworkResult.Text = "连接测试已取消。"; }
+        catch (Exception ex)
+        {
+            SoftwareNetworkResult.Text = "连接测试未完成：" + ex.Message;
+            Ui.Log("软件网络测试失败：" + ex.Message, "WARN");
+        }
+    }
 
     private void LoadStartupMode()
     {

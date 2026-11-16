@@ -69,7 +69,7 @@ internal sealed class CleanupRow : INotifyPropertyChanged
     public void SetResult(CleanupCategory category)
     {
         _category = category;
-        foreach (var property in new[] { nameof(Note), nameof(Files), nameof(Bytes),
+        foreach (var property in new[] { nameof(Group), nameof(Description), nameof(Note), nameof(Files), nameof(Bytes),
                      nameof(SizeText), nameof(CountText) }) Raise(property);
         Status = category.Note.Length > 0 ? category.Note : "扫描完成";
     }

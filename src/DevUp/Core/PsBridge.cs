@@ -200,11 +200,24 @@ public static class PsBridge
     {
         EnsureRuntime();
 
+        if (action is "softwareUpdates" or "installerUrl" or "downloadSoftware" or "installSoftware")
+        {
+            var network = await Services.SoftwareNetwork.PrepareWingetAsync(Ctx.Settings, ct);
+            args = args is null ? new Dictionary<string, string>() : new Dictionary<string, string>(args);
+            args["SoftwareProxyMode"] = Ctx.Settings.SoftwareProxyMode;
+            if (network.Count == 2) args["SoftwareProxyAddress"] = network[1];
+        }
+
         var outFile = Path.Combine(PortablePaths.Temp, $"devup_{action}_{Guid.NewGuid():N}.json");
         try
         {
             await RunProcessAsync(action, BuildArgs(action, args, outFile), outFile, ct);
-            return await ReadResultAsync(outFile, ct);
+            try { return await ReadResultAsync(outFile, ct); }
+            catch (InvalidOperationException ex) when (action is "softwareUpdates" or "installerUrl" or "downloadSoftware")
+            {
+                throw new InvalidOperationException("未能完成软件源查询或下载，请稍后重试。\n\n" +
+                    Services.SoftwareNetwork.Hint + "\n\n详情：" + ex.Message, ex);
+            }
         }
         finally
         {

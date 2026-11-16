@@ -3,6 +3,24 @@ using System.Text.Json;
 using DevUp.Core;
 using DevUp.Services;
 
+if (args is ["--validate-rules-pack", var rulesPath])
+{
+    var pack = CleanupRuleStore.Decode(await File.ReadAllBytesAsync(rulesPath));
+    var rules = CleanupRuleStore.ValidatePack(pack);
+    Console.WriteLine($"规则附件校验通过：{pack.Version}，{rules.Count} 项。");
+    return;
+}
+
+if (args.Contains("--network-ui"))
+{
+    NetworkChecks.RunUi();
+    return;
+}
+if (args.Contains("--updates-only"))
+{
+    await UpdateChecks.RunAsync();
+    return;
+}
 if (args.Contains("--cleanup-ui"))
 {
     CleanupViewChecks.Run();
@@ -35,6 +53,8 @@ if (args.Contains("--probe-small"))
     await ConsoleChecks.DownloadProbeAsync("7zip.7zip");
     return;
 }
+await NetworkChecks.RunAsync();
+await UpdateChecks.RunAsync();
 SoftwareChecks.Run();
 if (args.Contains("--software-only")) return;
 await CleanupChecks.RunAsync();

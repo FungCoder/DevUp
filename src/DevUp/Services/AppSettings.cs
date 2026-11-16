@@ -17,6 +17,16 @@ public sealed class AppSettings
     public string BackupRoot { get; set; } = DefaultBackupRoot;
     public string DownloadRoot { get; set; } = DefaultDownloadRoot;
 
+    /// <summary>软件网络模式：default=默认，direct=直连，custom=自定义 HTTP 代理。</summary>
+    public string SoftwareProxyMode { get; set; } = SoftwareNetwork.DefaultMode;
+
+    /// <summary>不含凭据的代理地址，用于软件及 DevUp 自身更新。</summary>
+    public string SoftwareProxyAddress { get; set; } = "";
+
+    /// <summary>启动时至多每天检查一次 DevUp 程序及规则更新。</summary>
+    public bool AutoCheckDevUpUpdates { get; set; } = true;
+    public DateTimeOffset LastDevUpUpdateCheckUtc { get; set; }
+
     /// <summary>启动方式：ask=每次询问，admin=直接提权，normal=普通权限。</summary>
     public string StartupMode { get; set; } = ModeAsk;
 
@@ -55,6 +65,8 @@ public sealed class AppSettings
             s.IgnoredDriverUpdates ??= new List<string>();
             s.IgnoredDevices ??= new List<string>();
             s.IgnoredSoftware ??= new List<string>();
+            if (string.IsNullOrWhiteSpace(s.SoftwareProxyMode)) s.SoftwareProxyMode = SoftwareNetwork.DefaultMode;
+            s.SoftwareProxyAddress ??= "";
             if (string.IsNullOrWhiteSpace(s.BackupRoot)) s.BackupRoot = DefaultBackupRoot;
             if (string.IsNullOrWhiteSpace(s.DownloadRoot)) s.DownloadRoot = DefaultDownloadRoot;
             s.BackupRoot = Path.GetFullPath(s.BackupRoot, Core.PortablePaths.Root);

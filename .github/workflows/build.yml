@@ -70,3 +70,17 @@ jobs:
           name: DevUp-win-x64-single-file
           path: build/single-file/DevUp.exe
           if-no-files-found: error
+
+      - name: 生成独立规则附件
+        shell: powershell
+        run: ./scripts/build-rules.ps1
+
+      - name: 校验规则附件
+        run: dotnet run --project tests/DevUp.PortableTests -c Release --no-build -- --validate-rules-pack build/release-assets/DevUp.rules.json.gz
+
+      - name: 上传规则附件
+        uses: actions/upload-artifact@v4
+        with:
+          name: DevUp-cleaning-rules
+          path: build/release-assets/DevUp.rules.json.gz
+          if-no-files-found: error

@@ -12,7 +12,11 @@ namespace DevUp.Services;
 /// <summary>内嵌白名单规则驱动的只读扫描与显式清理，不执行外部规则或脚本。</summary>
 internal sealed class CleanupService
 {
-    private readonly IReadOnlyList<CleanerEntry> _rules;
+    private static readonly string[] PrivateFilePrefixes =
+        ["Cookies", "Login Data", "Web Data", "Bookmarks", "History", "places.sqlite", "logins.json", "key4.db"];
+    private IReadOnlyList<CleanerEntry> _rules;
+    private readonly IReadOnlyList<CleanerEntry> _baseRules;
+    private readonly HashSet<string> _externalNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly IReadOnlyDictionary<string, string> _variables;
     private readonly Func<IEnumerable<string>> _protectedPaths;
     private readonly Func<string, bool> _isProcessRunning;
@@ -21,12 +25,14 @@ internal sealed class CleanupService
     public CleanupService() : this(ReadRules(), DefaultVariables(), () =>
         new[] { PortablePaths.Root, PortablePaths.StorageRoot,
             Ctx.Settings.BackupRoot, Ctx.Settings.DownloadRoot }
-            .Concat(PersonalFolders()), IsProcessRunning) { }
+            .Concat(PersonalFolders()), IsProcessRunning) { ReloadRules(); }
 
     internal CleanupService(string rules, IReadOnlyDictionary<string, string> variables,
-        Func<IEnumerable<string>> protectedPaths, Func<string, bool> isProcessRunning)
+        Func<IEnumerable<string>> protectedPaths, Func<string, bool> isProcessRunning,
+        IReadOnlyList<CleanerEntry>? additionalRules = null)
     {
         _rules = new Winapp2Parser().Parse(rules);
+        _baseRules = _rules;
         if (_rules.Count == 0 || _rules.Any(rule => rule.FileKeys.Count == 0 ||
                 rule.RegKeys.Count != 0 || rule.ExcludeKeys.Count != 0 ||
                 rule.FileKeys.Any(key => key.Flag == FileKeyFlag.RemoveSelf)))
@@ -34,10 +40,23 @@ internal sealed class CleanupService
         _variables = variables;
         _protectedPaths = protectedPaths;
         _isProcessRunning = isProcessRunning;
+        if (additionalRules is not null) ConfigureAdditionalRules(additionalRules);
     }
 
-    public IReadOnlyList<CleanupCategory> Categories => _rules.Select(rule =>
+    public IReadOnlyList<CleanupCategory> Categories => _baseRules.Select(rule =>
         Category(rule, Array.Empty<CleanupFile>(), 0, 0, "")).ToArray();
+
+    internal void ReloadRules()
+        => ConfigureAdditionalRules(Ctx.CleanupRules.Rules);
+
+    private void ConfigureAdditionalRules(IReadOnlyList<CleanerEntry> rules)
+    {
+        _lastScan = null;
+        var additional = rules.Where(rule => !_baseRules.Any(item => item.Name == rule.Name)).ToArray();
+        _externalNames.Clear();
+        foreach (var rule in additional) _externalNames.Add(rule.Name);
+        _rules = _baseRules.Concat(additional).ToArray();
+    }
 
     public Task<CleanupScan> ScanAsync(IProgress<CleanupProgress> progress, CancellationToken ct)
         => Task.Run(() => Scan(progress, ct), ct);
@@ -53,24 +72,30 @@ internal sealed class CleanupService
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var protectedPaths = GetProtectedPaths();
         var reportClock = Stopwatch.StartNew();
+        // 扩展规则只检查已存在的固定路径前缀，不把数百个未安装的软件铺满界面。
+        var activeRules = _rules.Where(rule => !_externalNames.Contains(rule.Name) ||
+            rule.FileKeys.Any(key => HasExistingPrefix(key.Path))).ToArray();
         long totalBytes = 0;
         var count = 0;
-        for (var index = 0; index < _rules.Count; index++)
+        for (var index = 0; index < activeRules.Length; index++)
         {
             ct.ThrowIfCancellationRequested();
-            var rule = _rules[index];
+            var rule = activeRules[index];
             var files = new List<CleanupFile>();
             long bytes = 0;
             var skipped = 0;
             var note = "";
-            progress.Report(new(rule.Name, index, _rules.Count, totalBytes, count, "正在检查缓存目录"));
+            progress.Report(new(rule.Name, index, activeRules.Length, totalBytes, count, "正在检查缓存目录"));
             if (HasRunningProcess(rule))
             {
                 note = "软件正在运行，请退出后重新扫描";
             }
             else
             {
-                var cutoff = DateTime.UtcNow - MinimumAge(rule);
+                var cutoff = DateTime.UtcNow - (_externalNames.Contains(rule.Name) ? TimeSpan.FromDays(7) : MinimumAge(rule));
+                var exclusions = rule.ExcludeKeys.Where(key => key.Type != ExcludeType.Reg)
+                    .Select(key => (Path: Expand(key.Path).TrimEnd('\\'),
+                        Pattern: key.Type == ExcludeType.Path ? null : key.Pattern)).ToArray();
                 foreach (var key in rule.FileKeys)
                 {
                     var patterns = key.Pattern.Split(';', StringSplitOptions.RemoveEmptyEntries);
@@ -89,12 +114,13 @@ internal sealed class CleanupService
                                     ct.ThrowIfCancellationRequested();
                                     if ((item.Attributes & FileAttributes.ReparsePoint) != 0) { skipped++; continue; }
                                     if (IsProtected(item.FullName, protectedPaths)) continue;
+                                    if (exclusions.Any(key => IsExcluded(item.FullName, key.Path, key.Pattern))) continue;
                                     if (item is DirectoryInfo)
                                     {
                                         if (key.Flag == FileKeyFlag.Recurse) pending.Push(item.FullName);
                                         continue;
                                     }
-                                    if (item is not FileInfo file || file.LastWriteTimeUtc > cutoff ||
+                                    if (item is not FileInfo file || IsPrivateFile(file.Name) || file.LastWriteTimeUtc > cutoff ||
                                         !patterns.Any(pattern => FileSystemName.MatchesSimpleExpression(
                                             pattern, file.Name, ignoreCase: true)) || !seen.Add(file.FullName)) continue;
                                     if ((file.Attributes & FileAttributes.ReadOnly) != 0) { skipped++; continue; }
@@ -108,7 +134,7 @@ internal sealed class CleanupService
                                         throw new InvalidOperationException("候选文件超过 25 万个，请先缩小临时目录后重试。");
                                     if (reportClock.ElapsedMilliseconds >= 100)
                                     {
-                                        progress.Report(new(rule.Name, index, _rules.Count,
+                                        progress.Report(new(rule.Name, index, activeRules.Length,
                                             totalBytes, count, file.FullName));
                                         reportClock.Restart();
                                     }
@@ -122,8 +148,9 @@ internal sealed class CleanupService
                 else if (files.Count == 0) note = "未发现可清理文件";
             }
             var result = Category(rule, files.AsReadOnly(), bytes, skipped, note);
-            categories.Add(result);
-            progress.Report(new(rule.Name, index + 1, _rules.Count, totalBytes, count, note, result));
+            if (!_externalNames.Contains(rule.Name) || files.Count > 0 || skipped > 0 ||
+                note.StartsWith("软件正在运行", StringComparison.Ordinal)) categories.Add(result);
+            progress.Report(new(rule.Name, index + 1, activeRules.Length, totalBytes, count, note, result));
         }
         ct.ThrowIfCancellationRequested();
         _lastScan = new CleanupScan(categories.AsReadOnly());
@@ -188,9 +215,7 @@ internal sealed class CleanupService
     private IEnumerable<string> ResolveRoots(string rawPath, string[] protectedPaths,
         CancellationToken ct, Action skipped)
     {
-        var expanded = rawPath;
-        foreach (var variable in _variables)
-            expanded = expanded.Replace($"%{variable.Key}%", variable.Value, StringComparison.OrdinalIgnoreCase);
+        var expanded = Expand(rawPath);
         if (expanded.Contains('%') || !Path.IsPathFullyQualified(expanded) || expanded.StartsWith(@"\\"))
             throw new InvalidDataException("清理规则含有未识别的变量或非本地绝对路径。");
         var volume = Path.GetPathRoot(expanded)!;
@@ -231,6 +256,39 @@ internal sealed class CleanupService
             else skipped();
         }
         return roots;
+    }
+
+    private string Expand(string path)
+    {
+        foreach (var variable in _variables)
+            path = path.Replace($"%{variable.Key}%", variable.Value, StringComparison.OrdinalIgnoreCase);
+        if (path.Contains('%')) throw new InvalidDataException("规则包含不支持的路径变量。");
+        return path;
+    }
+
+    private bool HasExistingPrefix(string path)
+    {
+        var expanded = Expand(path);
+        var wildcard = expanded.IndexOfAny(['*', '?']);
+        var prefix = wildcard < 0 ? expanded : expanded[..expanded.LastIndexOf('\\', wildcard)];
+        return Directory.Exists(prefix);
+    }
+
+    private static bool IsExcluded(string path, string excluded, string? pattern)
+    {
+        path = path.Replace('\\', '/');
+        excluded = excluded.Replace('\\', '/');
+        var folder = pattern is null ? excluded : excluded + "/" + pattern;
+        if (FileSystemName.MatchesSimpleExpression(folder, path, ignoreCase: true)) return true;
+        return pattern is null && FileSystemName.MatchesSimpleExpression(excluded + "/*", path, ignoreCase: true);
+    }
+
+    private static bool IsPrivateFile(string name)
+    {
+        foreach (var prefix in PrivateFilePrefixes)
+            if (name.Equals(prefix, StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith(prefix + "-", StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
     }
 
     private bool IsSafeRoot(string path, string rawPath)
@@ -277,7 +335,25 @@ internal sealed class CleanupService
     }
 
     private bool HasRunningProcess(CleanerEntry rule)
-        => ProcessNames(rule.Name).Any(_isProcessRunning);
+    {
+        if (ProcessNames(rule.Name).Any(_isProcessRunning)) return true;
+        if (!rule.Name.StartsWith("扩展 · ", StringComparison.Ordinal)) return false;
+        var name = rule.Name[5..];
+        var processes = name switch
+        {
+            var value when value.StartsWith("Google Chrome", StringComparison.OrdinalIgnoreCase) => new[] { "chrome" },
+            var value when value.StartsWith("Microsoft Edge", StringComparison.OrdinalIgnoreCase) => ["msedge"],
+            var value when value.StartsWith("Mozilla Firefox", StringComparison.OrdinalIgnoreCase) => ["firefox"],
+            var value when value.StartsWith("Brave", StringComparison.OrdinalIgnoreCase) => ["brave"],
+            var value when value.StartsWith("Microsoft Teams", StringComparison.OrdinalIgnoreCase) => ["Teams", "ms-teams"],
+            var value when value.StartsWith("Microsoft OneDrive", StringComparison.OrdinalIgnoreCase) => ["OneDrive"],
+            var value when value.StartsWith("Tencent WeChat", StringComparison.OrdinalIgnoreCase) => ["WeChat", "Weixin", "WXWork"],
+            var value when value.StartsWith("Discord", StringComparison.OrdinalIgnoreCase) => ["Discord"],
+            var value when value.StartsWith("Slack", StringComparison.OrdinalIgnoreCase) => ["slack"],
+            _ => Array.Empty<string>()
+        };
+        return processes.Any(_isProcessRunning);
+    }
 
     private static string[] ProcessNames(string name) => name switch
     {
@@ -332,7 +408,13 @@ internal sealed class CleanupService
             ["PROGRAMDATA"] = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
             ["USERPROFILE"] = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ["PROGRAMFILES"] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-            ["PROGRAMFILES(X86)"] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
+            ["PROGRAMFILES(X86)"] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            ["PROGRAMFILESX86"] = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            ["COMMONAPPDATA"] = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            ["LOCALLOWAPPDATA"] = Path.GetFullPath(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "..", "LocalLow")),
+            ["DOCUMENTS"] = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            ["SYSTEMROOT"] = Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+            ["SYSTEMDRIVE"] = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows))!.TrimEnd('\\')
         };
 
     private static IEnumerable<string> PersonalFolders() => new[]

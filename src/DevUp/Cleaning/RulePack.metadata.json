@@ -1,0 +1,11 @@
+{
+  "Format": 1,
+  "Version": "2026.11.16.1",
+  "MinimumAppVersion": "1.3.0",
+  "SourceCommit": "53ae41946c3d3c8bb348d81081c34b6050f0b561",
+  "SourceUrl": "https://github.com/MoscaDotTo/Winapp2",
+  "License": "CC-BY-SA-4.0",
+  "LicenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "Modifications": "DevUp retains selected AppData cache/log FileKeys and exclusions only; registry deletion is removed, REMOVESELF becomes RECURSE, all entries default to unselected with a seven-day retention policy.",
+  "Rules": ""
+}

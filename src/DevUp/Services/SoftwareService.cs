@@ -216,6 +216,8 @@ public sealed class SoftwareService
             psi.ArgumentList.Add(version!);
         }
 
+        foreach (var argument in await SoftwareNetwork.PrepareWingetAsync(Ctx.Settings, ct))
+            psi.ArgumentList.Add(argument);
         using var proc = new Process { StartInfo = psi };
         try
         {
@@ -234,18 +236,23 @@ public sealed class SoftwareService
                 // 超时或用户切换了选中项：都要结束子进程，避免 winget 残留在后台
                 try { proc.Kill(entireProcessTree: true); } catch { }
                 if (ct.IsCancellationRequested) throw;
-                return "";
+                throw new TimeoutException("读取软件清单超时。\n\n" + SoftwareNetwork.Hint);
             }
 
             var text = await outputTask;
             var err = await errorTask;
+            if (proc.ExitCode != 0 && !LooksNotFound(text + err))
+            {
+                var failure = ExplainFailure(proc.ExitCode, text + err);
+                throw new InvalidOperationException(failure.Reason + "\n\n" + failure.Hint);
+            }
             return string.IsNullOrWhiteSpace(text) ? err : text;
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             Ui.Log($"读取 winget 清单失败（{packageId}）: {ex.Message}", "WARN");
-            return "";
+            throw;
         }
     }
 
@@ -375,11 +382,28 @@ public sealed class SoftwareService
         var codeText = $"0x{raw:X8}";
         var detail = FirstMeaningfulLines(output);
 
+        if (raw is 0x80072EE2 or 0x80072EE7 or 0x80072EFD or 0x80072EFE or
+            0x80190193 or 0x80190194 or 0x80190197 or 0x8A150008 or 0x8A15002E)
+        {
+            var reason = raw switch
+            {
+                0x80072EE2 => "连接下载源超时。",
+                0x80072EE7 => "无法解析软件源、下载服务器或代理的域名。",
+                0x80072EFD => "无法连接软件源、下载服务器或代理。",
+                0x80190193 => "服务器拒绝访问（HTTP 403），可能存在访问策略或链接限制。",
+                0x80190194 => "下载地址不存在（HTTP 404），软件源中的链接可能已失效。",
+                0x80190197 => "代理服务器要求身份验证（HTTP 407），请检查代理配置。",
+                _ => "安装包下载中断或未能完整下载。"
+            };
+            return new WingetFailureInfo(exitCode, codeText, "暂时无法下载安装包", reason,
+                SoftwareNetwork.Hint, false, true, detail) { CanRetryDownload = true };
+        }
+
         var info = raw switch
         {
             0xFFFFFFFE => new WingetFailureInfo(exitCode, codeText, "更新长时间无进展",
                 "winget 在下载或准备阶段长时间没有可观察到的进展，已停止本次操作。",
-                "请检查网络或代理后重试；若下载源仍不可达，可打开官方下载页手动获取安装包。",
+                SoftwareNetwork.Hint,
                 CanRetryAsInstall: false, CanOpenInstaller: true, Detail: detail)
                 { CanRetryDownload = true },
 
@@ -417,13 +441,6 @@ public sealed class SoftwareService
                 "下载到的安装包与 winget 清单记录的哈希不一致，可能是下载不完整、源缓存过期，或被网络代理篡改。",
                 "请稍后重试；如果仍然失败，请打开官方安装包手动安装并核对文件校验值。",
                 CanRetryAsInstall: false, CanOpenInstaller: true, Detail: detail),
-
-            // 下载失败 / 大小不符
-            0x8A150008 or 0x8A15002E => new WingetFailureInfo(exitCode, codeText, "安装包下载失败",
-                "安装包没有下载完整，或下载源在传输过程中断开了连接。",
-                "检查网络后重试，或打开官方安装包手动下载。",
-                CanRetryAsInstall: false, CanOpenInstaller: true, Detail: detail)
-                { CanRetryDownload = true },
 
             // 需要管理员权限
             0x8A150019 => new WingetFailureInfo(exitCode, codeText, "需要管理员权限",
@@ -540,7 +557,8 @@ public sealed class SoftwareService
 
         progress?.Report(new ProgressInfo { Status = "正在准备升级…", Detail = "正在连接软件源…" });
         PseudoConsoleProcess session;
-        try { session = PseudoConsoleProcess.Start("winget.exe", arguments, ObserveOutput); }
+        var networkArguments = await SoftwareNetwork.PrepareWingetAsync(Ctx.Settings, ct);
+        try { session = PseudoConsoleProcess.Start("winget.exe", arguments.Concat(networkArguments), ObserveOutput); }
         catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode is 2 or 3)
         {
             throw new InvalidOperationException("没有找到 winget，请安装或更新系统的「应用安装程序」。", ex);
@@ -767,8 +785,7 @@ public sealed class SoftwareService
         string url, string target, IProgress<ProgressInfo>? progress, CancellationToken ct)
     {
         const int maxAttempts = 3;
-        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd("DevUp/1.1");
+        using var http = SoftwareNetwork.CreateClient(Ctx.Settings);
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
             ct.ThrowIfCancellationRequested();
@@ -789,12 +806,12 @@ public sealed class SoftwareService
             catch (Exception ex) when (ex is HttpRequestException or TimeoutException or OperationCanceledException)
             {
                 if (!IsTransientDownloadError(ex))
-                    throw new InvalidOperationException($"下载源拒绝了请求：{ex.Message}", ex);
+                    throw new InvalidOperationException(SoftwareNetwork.Explain(ex, url), ex);
 
                 Ui.Log($"安装包下载第 {attempt} 次失败：{ex.Message}", "WARN");
                 if (attempt == maxAttempts)
                     throw new InvalidOperationException(
-                        $"安装包下载失败，已自动重试 {maxAttempts} 次。请检查网络或代理后重试。\n{ex.Message}", ex);
+                        $"已尝试 {maxAttempts} 次。\n" + SoftwareNetwork.Explain(ex, url), ex);
 
                 progress?.Report(new ProgressInfo
                 {

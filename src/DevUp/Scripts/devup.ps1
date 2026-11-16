@@ -21,6 +21,8 @@ param(
     [string]$SearchText = '',
     [string]$Description = 'DevUp',
     [string]$DownloadDirectory = '',
+    [ValidateSet('default', 'direct', 'custom')][string]$SoftwareProxyMode = 'default',
+    [string]$SoftwareProxyAddress = '',
     [string]$BackupDirectory = '',
     [string]$PublishedNames = '',
     [switch]$Silent,
@@ -52,6 +54,20 @@ function Write-Failure {
         Write-Output $json
     }
     exit 1
+}
+
+function Get-SoftwareNetworkArguments {
+    if ($SoftwareProxyMode -eq 'direct') { return ,@('--no-proxy') }
+    if ($SoftwareProxyMode -eq 'custom') {
+        $proxyUri = $null
+        if (-not [Uri]::TryCreate($SoftwareProxyAddress, [UriKind]::Absolute, [ref]$proxyUri) -or
+            $proxyUri.Scheme -notin @('http', 'https') -or $proxyUri.UserInfo -or
+            $proxyUri.AbsolutePath -ne '/' -or $proxyUri.Query -or $proxyUri.Fragment) {
+            throw '代理地址无效，请在网络与下载中重新设置。'
+        }
+        return ,@('--proxy', $proxyUri.AbsoluteUri)
+    }
+    return ,@()
 }
 
 function ConvertFrom-WingetList {
@@ -492,7 +508,8 @@ try {
 
         # ---------------- winget 已匹配软件与可用更新 ----------------
         'softwareUpdates' {
-            $raw = & winget list --source winget --accept-source-agreements --disable-interactivity 2>&1 | Out-String
+            $networkArgs = Get-SoftwareNetworkArguments
+            $raw = & winget list --source winget --accept-source-agreements --disable-interactivity @networkArgs 2>&1 | Out-String
             $exitCode = $LASTEXITCODE
             if ($exitCode -ne 0) {
                 $detail = $raw.Trim()
@@ -510,6 +527,7 @@ try {
                        '--accept-source-agreements', '--accept-package-agreements',
                        '--disable-interactivity')
             if ($Silent) { $wargs += '--silent' }
+            $wargs += Get-SoftwareNetworkArguments
             $out = & winget @wargs 2>&1 | Out-String
             Write-Result @{ exitCode = $LASTEXITCODE; output = $out.Trim() }
         }
@@ -519,6 +537,7 @@ try {
             if ([string]::IsNullOrWhiteSpace($PackageId)) { Write-Failure '缺少 PackageId' }
             $wargs = @('show', '--id', $PackageId, '--exact', '--accept-source-agreements', '--disable-interactivity')
             if (-not [string]::IsNullOrWhiteSpace($Version)) { $wargs += @('--version', $Version) }
+            $wargs += Get-SoftwareNetworkArguments
             $raw = & winget @wargs 2>&1 | Out-String
             $exitCode = $LASTEXITCODE
             if ($exitCode -ne 0) {
@@ -547,6 +566,7 @@ try {
 
             $wargs = @('download', '--id', $PackageId, '--exact', '--download-directory', $dir,
                        '--accept-source-agreements', '--accept-package-agreements', '--disable-interactivity')
+            $wargs += Get-SoftwareNetworkArguments
             $out = & winget @wargs 2>&1 | Out-String
             Write-Result @{ exitCode = $LASTEXITCODE; output = $out.Trim(); directory = $dir }
         }

@@ -38,7 +38,7 @@ public partial class MainWindow : Window
 
         AdminBadge.Text = Native.IsAdministrator() ? "权限：管理员" : "权限：普通用户（部分操作会临时提权）";
         BtnElevate.Visibility = Native.IsAdministrator() ? Visibility.Collapsed : Visibility.Visible;
-        BuildInfo.Text = "v" + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.2.0");
+        BuildInfo.Text = "v" + (typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "1.3.0");
 
         Ctx.State.PropertyChanged += (_, e) =>
         {
@@ -52,6 +52,7 @@ public partial class MainWindow : Window
                     BtnRescan.IsEnabled = !Ctx.State.IsBusy;
                     BtnScanUpdates.IsEnabled = !Ctx.State.IsBusy;
                     BtnElevate.IsEnabled = !Ctx.State.IsBusy;
+                    UpdateNotice.IsEnabled = !Ctx.State.IsBusy;
                     foreach (var nav in new[] { NavDashboard, NavDrivers, NavSoftware, NavNpm, NavTools, NavCleanup })
                         nav.IsEnabled = !Ctx.State.IsBusy;
                     break;
@@ -69,7 +70,19 @@ public partial class MainWindow : Window
             while (Ctx.State.Logs.Count > 300) Ctx.State.Logs.RemoveAt(Ctx.State.Logs.Count - 1);
         });
 
-        Loaded += async (_, _) => await InitialScanAsync();
+        Loaded += async (_, _) =>
+        {
+            var updateCheck = Ctx.Updates.CheckOnStartupAsync();
+            if (UpdateInstaller.TakeResult() is { } result)
+            {
+                if (result.Success) Ui.Info("DevUp 更新完成", result.Message);
+                else Ui.Warn("上次更新未完成", result.Message);
+            }
+            await InitialScanAsync();
+            await updateCheck;
+        };
+        Ctx.Updates.Changed += (_, _) =>
+            UpdateNotice.Visibility = Ctx.Updates.HasUpdates ? Visibility.Visible : Visibility.Collapsed;
         Closing += (_, args) =>
         {
             if (!_cleanup.IsRunning) return;
@@ -86,6 +99,12 @@ public partial class MainWindow : Window
             await Ctx.LoadSystemInfoAsync(ct);
             await Scanner.ScanOverviewAsync(progress, ct);
         }, TimeSpan.FromMinutes(8));
+    }
+
+    private void UpdateNotice_Click(object sender, RoutedEventArgs args)
+    {
+        NavTools.IsChecked = true;
+        _tools.ShowUpdates();
     }
 
     private void Nav_Checked(object sender, RoutedEventArgs e)
@@ -154,6 +173,9 @@ public partial class MainWindow : Window
         NavSoftware.IsChecked = true;
         _software.ShowOnlyUpdates(onlyUpdates);
     }
+
+    /// <summary>下载失败时跳转到包含网络设置的工具页。</summary>
+    public void NavigateToTools() => NavTools.IsChecked = true;
 
     private void SetHeader(string title, string subtitle)    {
         PageTitle.Text = title;

@@ -11,6 +11,8 @@ namespace DevUp.Views;
 public partial class CleanupView : UserControl
 {
     private readonly CleanupService _service;
+    private readonly bool _usesRuleStore;
+    private string _ruleVersion = "";
     private readonly ObservableCollection<CleanupRow> _rows = new();
     private CleanupScan? _scan;
     private CancellationTokenSource? _cancellation;
@@ -32,33 +34,36 @@ public partial class CleanupView : UserControl
     public bool IsRunning => _cancellation is not null;
 
     public CleanupView()
-        : this(new CleanupService()) { }
+        : this(new CleanupService(), true) { }
 
-    internal CleanupView(CleanupService service)
+    internal CleanupView(CleanupService service) : this(service, false) { }
+
+    private CleanupView(CleanupService service, bool usesRuleStore)
     {
         _service = service;
+        _usesRuleStore = usesRuleStore;
+        if (usesRuleStore) _ruleVersion = Ctx.CleanupRules.Current.Version;
         InitializeComponent();
-        foreach (var category in _service.Categories)
-        {
-            var row = new CleanupRow(category);
-            row.PropertyChanged += (_, args) =>
-            {
-                if (args.PropertyName == nameof(CleanupRow.Selected)) UpdateSelection();
-            };
-            _rows.Add(row);
-        }
+        foreach (var category in _service.Categories) AddRow(category);
         CategoryGrid.ItemsSource = _rows;
         IsVisibleChanged += (_, _) => UpdateActivityAnimation();
         Unloaded += (_, _) =>
         {
             Ctx.State.PropertyChanged -= OnAppStateChanged;
             SystemParameters.StaticPropertyChanged -= OnSystemSettingsChanged;
+            if (_usesRuleStore) Ctx.CleanupRules.Changed -= Rules_Changed;
             StopAnimations();
         };
         Loaded += (_, _) =>
         {
             Ctx.State.PropertyChanged += OnAppStateChanged;
             SystemParameters.StaticPropertyChanged += OnSystemSettingsChanged;
+            if (_usesRuleStore)
+            {
+                Ctx.CleanupRules.Changed += Rules_Changed;
+                if (_ruleVersion != Ctx.CleanupRules.Current.Version) Rules_Changed(this, EventArgs.Empty);
+                ScanButton.ToolTip = "规则版本：" + _ruleVersion + "；可在备份与工具中检查更新。";
+            }
             UpdateButtons();
             UpdateActivityAnimation();
         };
@@ -70,6 +75,17 @@ public partial class CleanupView : UserControl
         _cancellation?.Cancel();
         CancelButton.IsEnabled = false;
         CancelButton.Content = "正在取消…";
+    }
+
+    private void Rules_Changed(object? sender, EventArgs args)
+    {
+        if (!Dispatcher.CheckAccess()) { Dispatcher.Invoke(() => Rules_Changed(sender, args)); return; }
+        _scan = null;
+        _service.ReloadRules();
+        _ruleVersion = Ctx.CleanupRules.Current.Version;
+        ActivityText.Text = "规则已更新，请重新扫描";
+        FileGrid.ItemsSource = null;
+        UpdateSelection();
     }
 
     private async void Scan_Click(object sender, RoutedEventArgs args)
@@ -110,12 +126,12 @@ public partial class CleanupView : UserControl
                 if (!cleaning)
                 {
                     _scan = null;
+                    FileGrid.ItemsSource = null;
                     var categories = _service.Categories;
-                    for (var index = 0; index < _rows.Count; index++)
+                    _rows.Clear();
+                    foreach (var category in categories)
                     {
-                        var row = _rows[index];
-                        row.SetResult(categories[index]);
-                        row.Status = "等待扫描";
+                        AddRow(category);
                     }
                     UpdateDetails();
                 }
@@ -131,6 +147,10 @@ public partial class CleanupView : UserControl
                     AnimateBytes(update.Bytes);
                     AnimateProgress(update.Total > 0 ? update.Completed * 100d / update.Total : 0);
                     var row = _rows.FirstOrDefault(item => item.Name == update.Category);
+                    if (row is null && update.Result is { Files.Count: > 0 } category)
+                    {
+                        row = AddRow(category);
+                    }
                     if (row is not null)
                     {
                         foreach (var previous in _rows.Where(item => item.IsActive && !ReferenceEquals(item, row)))
@@ -165,7 +185,14 @@ public partial class CleanupView : UserControl
                 {
                     _scan = await _service.ScanAsync(progress, cancellation.Token);
                     foreach (var category in _scan.Categories)
-                        _rows.First(row => row.Name == category.Name).SetResult(category);
+                    {
+                        var row = _rows.FirstOrDefault(row => row.Name == category.Name);
+                        if (row is null)
+                        {
+                            row = AddRow(category);
+                        }
+                        row.SetResult(category);
+                    }
                     AnimateBytes(_scan.Bytes);
                     CountText.Text = $"共 {_scan.FileCount:N0} 个文件 · {_scan.Categories.Count} 类项目";
                     ActivityText.Text = _scan.FileCount > 0 ? "扫描完成，选择需要清理的项目" : "扫描完成，未发现可清理文件";
@@ -212,6 +239,17 @@ public partial class CleanupView : UserControl
         CategoryGrid.IsEnabled = !IsRunning;
         SelectionButtons.IsEnabled = !Ctx.State.IsBusy;
         CancelButton.Visibility = IsRunning ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private CleanupRow AddRow(CleanupCategory category)
+    {
+        var row = new CleanupRow(category);
+        row.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(CleanupRow.Selected)) UpdateSelection();
+        };
+        _rows.Add(row);
+        return row;
     }
 
     private void UpdateSelection()

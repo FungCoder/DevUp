@@ -429,10 +429,10 @@ public partial class SoftwareView : UserControl
             Ui.Success("下载完成", $"安装包已保存到：\n{path}{summary}");
     }
 
-    private Task<string?> DownloadInstallerAsync()
+    private async Task<string?> DownloadInstallerAsync()
     {
         var item = SoftwareGrid.SelectedItem as SoftwareItem;
-        if (item is null || string.IsNullOrEmpty(item.WingetId)) return Task.FromResult<string?>(null);
+        if (item is null || string.IsNullOrEmpty(item.WingetId)) return null;
 
         var version = item.AvailableVersion ?? item.DisplayVersion;
         var target = "";
@@ -449,21 +449,25 @@ public partial class SoftwareView : UserControl
         }
         catch (OperationCanceledException)
         {
-            return Task.FromResult<string?>(null);
+            return null;
         }
         catch (Exception ex)
         {
             Ui.Log($"安装包下载失败（{item.WingetId}）：{ex}", "ERROR");
-            Ui.Warn("安装包下载失败", ex.Message);
-            return Task.FromResult<string?>(null);
+            var choice = Ui.Ask($"《{item.DisplayName}》安装包未能下载", ex.Message,
+                "打开官方下载页", "网络与下载设置");
+            if (choice == DialogChoice.Ok) await OpenInstallerAsync(item);
+            else if (choice == DialogChoice.Extra && Application.Current.MainWindow is MainWindow window)
+                window.NavigateToTools();
+            return null;
         }
 
-        if (!done || string.IsNullOrEmpty(target)) return Task.FromResult<string?>(null);
+        if (!done || string.IsNullOrEmpty(target)) return null;
 
         Ui.Log($"安装包已下载：{target}");
         _downloadedPath = target;
         _downloadedKey = _detailsKey;
-        return Task.FromResult<string?>(target);
+        return target;
     }
 
     private async Task<FileHashResult?> VerifyFileAsync(string path, bool showDialog)
@@ -701,8 +705,7 @@ public partial class SoftwareView : UserControl
     {
         if (!info.CanRetryDownload) return false;
 
-        var detail = string.IsNullOrWhiteSpace(info.Detail) ? "" : "\n\n" + info.Detail;
-        var choice = Ui.Ask(info.Title, info.Reason + detail + "\n\n" + info.Hint,
+        var choice = Ui.Ask($"《{item.DisplayName}》{info.Title}", info.Reason + "\n\n" + info.Hint,
             "重试升级", "打开下载页");
         if (choice == DialogChoice.Ok) await retry();
         else if (choice == DialogChoice.Extra) await OpenInstallerAsync(item);
@@ -888,7 +891,8 @@ public partial class SoftwareView : UserControl
         Ui.Success("批量升级完成", $"成功 {ok} 个，未完成 {failures.Count} 个。" +
                                   (failures.Count > 0
                                       ? "\n\n" + string.Join("\n", failures.Take(6)) +
-                                        "\n\n可对未完成的软件单独点击『升级』，会给出更具体的原因和处理方式。"
+                                        "\n\n" + SoftwareNetwork.Hint +
+                                        "\n\n可对未完成的软件单独点击『升级』，查看具体原因。"
                                       : ""));
     }
 }

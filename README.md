@@ -4,7 +4,7 @@
 > 界面用 WPF 自绘，更新逻辑复用成熟的开源内核，以**单个 DevUp.exe** 分发，使用官方 **.NET 8 桌面运行时（x64）**，无需安装 DevUp。
 
 - 作者：风之翼灵'Blog · <https://www.fungj.com>
-- 版本：1.2.0（Windows 10 19041+ / Windows 11，x64）
+- 版本：1.3.0（Windows 10 19041+ / Windows 11，x64）
 - 许可证：MIT（第三方组件各自遵循其许可证，见 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)）
 
 ![DevUp 概览（系统信息与个人路径已打码）](docs/images/ui-dashboard-redacted.png)
@@ -50,12 +50,15 @@
 检测不到 Node.js 或 npm 损坏时，只给友好提示与官方下载入口，**不会自动安装**。
 
 ### 备份与工具
+「网络与下载」提供默认连接、直接连接和自定义 HTTP/HTTPS 代理，统一应用于 winget 软件检查、清单查询、升级及安装包下载。代理需要用户已有可用服务，不修改系统代理，不影响驱动或 npm。旧版 winget 不支持代理参数时会提示更新「应用安装程序」。连接测试可填写具体软件的 HTTPS 官方下载地址，只检查响应，不下载完整安装包，也不保证其他地址或完整下载可用。下载失败会说明域名解析、连接超时、服务器拒绝访问等问题，并提示境外下载源可能受当前网络影响，以及配置代理、更换网络或打开官方下载页等处理方法；不会仅凭超时断定境外访问受限。
+
 驱动备份目录、安装包下载目录可自由选择并持久化；驱动包备份 / 还原、系统还原点、报告导出（JSON / HTML）、运行日志。
 
 ### 垃圾清理
 - 独立页面，先只读扫描，再按分类勾选并确认永久删除；可查看完整路径与文件大小。
 - 内嵌 17 类自有规则：用户 / Windows 临时文件、错误报告、应用 / 系统转储、缩略图、DirectX / NVIDIA / AMD 着色器缓存，以及 Edge、Chrome、Firefox、Brave、VS Code、Discord、Slack、Spotify 缓存。
-- 临时文件保留最近七天；错误报告与转储保留最近一天，默认不勾选。浏览器及软件正在运行时跳过，退出后重新扫描。
+- 另内嵌 Winapp2 的 756 项适配规则，覆盖更多第三方软件及 Windows 应用的明确缓存、日志子目录；扫描时只展示实际命中的扩展项目。扩展项目默认不勾选，保留最近七天文件，支持上游的文件和目录排除规则。不会递归清空整个 UWP LocalCache，也不清理 OneNote 笔记缓存等可能包含未同步资料的目录。
+- 临时文件保留最近七天；错误报告与转储保留最近一天，默认不勾选。已识别的常用浏览器及软件正在运行时跳过；其他扩展软件依靠保留期和占用检查，清理前仍应退出相应软件。
 - 保留个人文件、密码、Cookie、收藏夹、历史记录，以及 DevUp 程序目录、驱动备份和安装包下载目录。跳过链接、只读及占用文件；清理前复核文件路径、创建时间、修改时间和大小，扫描后变化的文件需重扫。
 - 扫描和清理均支持取消。清理取消后保留已删除数量与大小；已删除文件无法恢复，重新扫描后才可再次清理。大小为成功删除文件的逻辑大小，不等同于磁盘实际可用空间增量。
 - 扫描类别高亮、旋转指示、柔和光带、数值和进度过渡沿用全局主题；切换页面停止装饰动画，并遵循 Windows 的动画开关，不显示估算文件进度。
@@ -64,6 +67,15 @@
 ### 启动方式
 首次启动会询问「以管理员权限运行 / 以普通权限运行」，可勾选「记住我的选择」，之后在「备份与工具 → 启动方式」随时改回每次询问。
 普通权限下，只有驱动安装、驱动备份还原、创建还原点等系统级操作才会单独弹 UAC；**取消 UAC 会回落到普通权限继续运行**，不会中断使用。
+
+### DevUp 与规则更新
+「备份与工具」顶部统一检查本项目 GitHub 正式 Release 的程序和规则附件。默认仅在启动时、每天至多检查一次，可关闭；没有后台常驻进程。发现更新时侧栏显示入口，手动检查也使用同一逻辑。只信任固定仓库 `FungCoder/DevUp`，按 GitHub 附件登记的 SHA256 与大小校验；缺少校验信息时不自动安装。
+
+程序下载后验证产品和版本，通过短时 PowerShell helper 等待主进程退出再替换、重启。复制或启动调用失败时尝试还原；保留一份旧版在 `DevUpData/updates/DevUp.previous.exe`。进程启动后的应用内部故障不能由 helper 保证自动恢复，可关闭程序后用该备份替换原 exe。设置、备份及下载目录保留。helper 完成后清理本次临时文件。
+
+规则数据包独立为 `DevUp.rules.json.gz`：兼容性检查后原子替换，保留上一份可用版本；损坏时回退上一版或内嵌规则。更新后旧扫描结果失效，必须重扫。网络失败不影响已有程序和规则。直接分发单个 exe 时仍可离线使用全部内嵌规则，无需额外安装更新器或运行环境。
+
+首次发布这套更新机制时，需在同一正式 Release 上传新版 `DevUp.exe` 和规则附件。后续只更新规则时，可递增规则包内部版本后替换最新正式 Release 中的同名规则附件，无需重新发布 exe。客户端使用该正式 Release 的最新附件与其 SHA256，不直接执行上游 master 分支内容。规则维护与发布步骤见 [docs/UPDATES.md](docs/UPDATES.md)。
 
 ## 3. 架构
 
@@ -114,7 +126,8 @@ DevUp.exe（WPF 外壳，单文件，依赖官方 .NET 8 桌面运行时）
 | [PSWindowsUpdate](https://github.com/mgajda83/PSWindowsUpdate) | 2.2.1.5 | MIT | 通过 WUA 搜索、下载、安装驱动更新 | 模块内嵌（`lib/PSWindowsUpdate`） |
 | [MSCatalog](https://github.com/ryan-jan/MSCatalog) | 0.27.0 | MIT | 检索 Microsoft Update Catalog 上的离线更新 | 模块内嵌（`lib/MSCatalog`） |
 | [winget](https://github.com/microsoft/winget-cli) | 系统自带 | MIT | 软件清单、版本比对、升级、下载 | 调用外部 CLI |
-| [FluentCleaner](https://github.com/builtbybel/FluentCleaner) | 固定提交 `18977b7` | MIT | 解析内嵌清理规则 | 复用 5 个源码文件，见 `lib/FluentCleaner`；未复制 Winapp2 规则库 |
+| [FluentCleaner](https://github.com/builtbybel/FluentCleaner) | 固定提交 `18977b7` | MIT | 解析清理规则 | 复用 5 个源码文件，见 `lib/FluentCleaner`；规则数据见 Winapp2 单独条目 |
+| [Winapp2](https://github.com/MoscaDotTo/Winapp2) | 固定提交 `53ae419` 的适配子集 | CC BY-SA 4.0 | 第三方软件及 Windows 应用缓存规则 | 保留安全子目录、排除规则与署名，移除注册表删除和隐私数据清理；详见 `lib/Winapp2` |
 | pnputil / Checkpoint-Computer / Get-PnpDevice | 系统自带 | — | 驱动导出还原、系统还原点、设备枚举 | 命令行 / CIM |
 
 > 本项目**没有**复制任何 GPL / AGPL 项目的源码（例如 SDIO 一类工具），只借鉴其思路后自行实现。
@@ -172,7 +185,7 @@ DevUp/
 
 ## 9. 许可证
 
-本项目自身代码由 风之翼灵'Blog 维护，以 MIT 许可证发布；随包内第三方组件遵循各自的 MIT 许可证（见 `docs/ATTRIBUTION.md` 与 `LICENSE`）。
+本项目自身代码由 风之翼灵'Blog 维护，以 MIT 许可证发布；第三方代码组件保留各自 MIT 许可证，Winapp2 适配规则数据单独遵循 CC BY-SA 4.0（见 `docs/ATTRIBUTION.md` 与 `LICENSE`）。
 
 便携路径回归检查：`dotnet run --project tests/DevUp.PortableTests -c Release`（含真实 PowerShell 调用；不安装软件或驱动）。
 
@@ -181,3 +194,5 @@ DevUp/
 垃圾清理安全回归：`dotnet run --project tests/DevUp.PortableTests -c Release -- --cleanup-only`，只在专用测试临时目录创建、扫描和删除文件；也包含在默认回归中。
 
 清理页交互与布局检查：`dotnet run --project tests/DevUp.PortableTests -c Release -- --cleanup-ui`，使用隔离测试文件验证扫描、取消、确认清理、按钮状态、动画结束与窄窗口布局，生成 `build/cleanup-ui*.png`；不会扫描或清理真实系统缓存。
+
+程序及规则更新检查：`dotnet run --project tests/DevUp.PortableTests -c Release -- --updates-only`，使用内存 HTTP 响应与隔离临时目录验证下载、校验、规则回退和真实 PowerShell 替换，不启动被替换程序，不修改真实 DevUp.exe。

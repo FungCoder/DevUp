@@ -1,7 +1,7 @@
 # 第三方组件与许可证（Attribution）
 
 DevUp 的界面与业务代码为自有实现；下列开源组件以 **NuGet 引用**、**模块内嵌** 或 **源码引用** 的方式复用，
-版权归原作者所有，均以 MIT 许可证分发。此文件随软件一同分发，用于满足 MIT 许可证的署名要求。
+版权归原作者所有。代码组件保留 MIT 许可证，新增的 Winapp2 规则数据单独采用 CC BY-SA 4.0，不能视为 MIT 数据。
 
 ---
 
@@ -141,7 +141,7 @@ SOFTWARE.
 - 作者：A Belim app creation
 - 许可证：MIT，完整原文保存在 `lib/FluentCleaner/LICENSE`，并以 `FluentCleaner.LICENSE` 内嵌于 DevUp.exe。
 - 复用方式：原样引用 `FluentCleaner.Core/Models` 下的 `CleanerEntry`、`FileKeyEntry`、`ExcludeKeyEntry`、`RegKeyEntry` 和 `Services/Winapp2Parser.cs`，通过工程级 `System.IO` using 兼容 WPF 工程。
-- 用途：解析 DevUp 自有的 `Cleaning/Rules.ini`；未引入上游 UI、清理执行代码及 Winapp2 数据库。DevUp 不执行规则中的注册表删除、外部命令或 REMOVESELF 操作。
+- 用途：解析清理规则；未引入 FluentCleaner 上游 UI 或清理执行代码，Winapp2 适配数据的单独许可见下一节。DevUp 不执行规则中的注册表删除、外部命令或 REMOVESELF 操作。
 
 ```text
 MIT License
@@ -167,11 +167,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## 7. 未使用的项目说明
+## 7. Winapp2 适配规则数据
+
+- 原作者与项目：Winapp2 / MoscaDotTo 与贡献者，<https://github.com/MoscaDotTo/Winapp2>。
+- 来源：提交 `53ae41946c3d3c8bb348d81081c34b6050f0b561` 的 `Non-CCleaner/FluentCleaner/Winapp2.ini`。
+- 许可：CC BY-SA 4.0，<https://creativecommons.org/licenses/by-sa/4.0/>；全文保留在 `lib/Winapp2/LICENSE` 并以内嵌资源随 exe 分发。
+- 修改者：DevUp，2026-11-16。仅保留指定缓存/日志 FileKey 与排除条件，移除注册表与隐私数据清理，把 REMOVESELF 改为 RECURSE，默认不勾选并保留最近七天文件。
+- 修改后的 `Cleaning/Winapp2.safe.ini` 与规则数据包继续采用 CC BY-SA 4.0；独立的自有执行器和更新代码保持 MIT。详情见 `lib/Winapp2/README.md`。
+
+## 8. 未使用的项目说明
 
 本项目的设计思路参考了同类开源工具（如 SDIO 等）的公开文档与交互方式，但**未复制其源码**；
 SDIO 等项目采用 GPLv3 许可证，本项目为避免许可证传染，仅自行实现相似功能。
 
 ---
 
-最后更新：2026-11-13
+最后更新：2026-11-16
