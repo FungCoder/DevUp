@@ -141,7 +141,7 @@ public partial class SoftwareView
         {
             var completed = ProgressDialog.Run("正在批量升级", $"共 {pending.Count} 个软件",
                 (progress, ct) => SoftwareBatchService.RunAsync(pending,
-                    (id, scoped, token) => Ctx.Software.InstallWithProgressAsync(id, scoped, token),
+                    (id, packageProgress, token) => Ctx.Software.InstallWithProgressAsync(id, packageProgress, token),
                     progress, ct));
             Ctx.State.StatusText = completed ? "批量升级已结束，结果见软件页" : "批量升级已取消，结果见软件页";
         }
