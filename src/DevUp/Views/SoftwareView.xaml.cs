@@ -1,4 +1,3 @@
-using System.Collections;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -25,8 +24,14 @@ public partial class SoftwareView : UserControl
         InitializeComponent();
         Loaded += (_, _) => { ApplyFilter(); _ = LoadDetailsAsync(); };
         // 扫描是异步的：清单或可用版本变化后刷新筛选与计数
-        Ctx.State.Software.CollectionChanged += (_, _) => ApplyFilter();
+        Ctx.State.Software.CollectionChanged += (_, _) => QueueFilterRefresh();
         Scanner.SoftwareChanged += () => Dispatcher.Invoke(ApplyFilter);
+        Ctx.State.SoftwareUpdateCheck.PropertyChanged += (_, _) => ApplyFilter();
+        Ctx.State.SoftwareInventoryCheck.PropertyChanged += (_, _) => ApplyFilter();
+        Ctx.State.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(ScanState.IsBusy)) UpdateBatchControls();
+        };
         SoftHint.Text = "";
     }
 
@@ -46,12 +51,8 @@ public partial class SoftwareView : UserControl
         if (view is null) return;
 
         var tag = SelectedFilterTag(CmbFilter);
-        view.Filter = o => o is SoftwareItem s && (tag switch
-        {
-            "updates" => s.HasUpdate && !s.Ignored,
-            "ignored" => s.Ignored,
-            _ => !s.Ignored
-        });
+        var query = SearchBox?.Text ?? "";
+        view.Filter = o => o is SoftwareItem s && SoftwareBatchService.Matches(s, query, tag);
         view.Refresh();
 
         var shown = view.Cast<object>().Count();
@@ -60,6 +61,7 @@ public partial class SoftwareView : UserControl
         SoftCountText.Text = $"{shown} / {total}";
         UpdateEmptyState(shown, total, tag);
         UpdateSelectionState();
+        UpdateBatchControls();
     }
 
     private void UpdateEmptyState(int shown, int total, string tag)
@@ -74,9 +76,15 @@ public partial class SoftwareView : UserControl
 
         EmptyPanel.Visibility = Visibility.Visible;
         var ignored = Ctx.State.Software.Count(s => s.Ignored);
-        if (total == 0)
+        if (!string.IsNullOrWhiteSpace(SearchBox?.Text))
         {
-            EmptyTitle.Text = "还没有软件清单";
+            EmptyTitle.Text = "没有匹配的搜索结果";
+            EmptyDesc.Text = "试试软件名称、发布者或包 ID，也可清空搜索或切换筛选";
+        }
+        else if (total == 0)
+        {
+            EmptyTitle.Text = Ctx.State.SoftwareInventoryCheck.IsCurrent
+                ? "没有读取到已安装软件" : Ctx.State.SoftwareInventoryCheck.Description;
             EmptyDesc.Text = "点上方「刷新已装清单」读取桌面软件与 MSIX 应用";
         }
         else if (tag == "ignored")
@@ -86,6 +94,12 @@ public partial class SoftwareView : UserControl
         }
         else if (tag == "updates")
         {
+            if (!Ctx.State.SoftwareUpdateCheck.IsCurrent)
+            {
+                EmptyTitle.Text = Ctx.State.SoftwareUpdateCheck.Description;
+                EmptyDesc.Text = "请检查更新后确认；当前空列表不能作为没有更新的结论";
+                return;
+            }
             EmptyTitle.Text = "没有可更新的软件";
             EmptyDesc.Text = ignored > 0
                 ? $"有 {ignored} 个更新已被忽略，可在筛选「已忽略」中查看并恢复"
@@ -155,6 +169,8 @@ public partial class SoftwareView : UserControl
                     : ignored > 0
                         ? $"没有待处理的更新　·　已忽略 {ignored} 项，可在筛选中查看并恢复"
                         : $"没有可更新的软件　·　共 {total} 个";
+            if (!Ctx.State.SoftwareUpdateCheck.IsCurrent)
+                SoftHint.Text = Ctx.State.SoftwareUpdateCheck.Description;
             return;
         }
 
@@ -183,11 +199,17 @@ public partial class SoftwareView : UserControl
             DetailBadgeText.Foreground = B("#7B8794");
             DetailBadgeText.Text = "已忽略";
         }
-        else if (item.HasUpdate)
+        else if (item.HasUpdate && Ctx.State.SoftwareUpdateCheck.IsCurrent)
         {
             DetailBadge.Background = B("#EAF1FE");
             DetailBadgeText.Foreground = B("#2D6CDF");
             DetailBadgeText.Text = "可更新";
+        }
+        else if (!Ctx.State.SoftwareUpdateCheck.IsCurrent)
+        {
+            DetailBadge.Background = B("#F1F3F7");
+            DetailBadgeText.Foreground = B("#7B8794");
+            DetailBadgeText.Text = Ctx.State.SoftwareUpdateCheck.HasResult ? "结果待复核" : "未检查";
         }
         else if (item.HasWingetMatch)
         {
@@ -202,7 +224,7 @@ public partial class SoftwareView : UserControl
             DetailBadgeText.Text = "未匹配";
         }
 
-        BtnUpgradeThis.IsEnabled = item.HasUpdate && !item.Ignored;
+        BtnUpgradeThis.IsEnabled = item.HasUpdate && !item.Ignored && Ctx.State.SoftwareUpdateCheck.IsCurrent;
         BtnDownloadThis.IsEnabled = !string.IsNullOrEmpty(item.WingetId);
 
         BtnIgnoreThis.Visibility = item.HasUpdate || item.Ignored ? Visibility.Visible : Visibility.Collapsed;
@@ -213,6 +235,8 @@ public partial class SoftwareView : UserControl
             : item.HasUpdate
                 ? $"已选择：{item.DisplayName}　{item.DisplayVersion} → {item.AvailableVersion}"
                 : $"已选择：{item.DisplayName}（当前没有可用更新）";
+        if (!Ctx.State.SoftwareUpdateCheck.IsCurrent)
+            SoftHint.Text = Ctx.State.SoftwareUpdateCheck.Description;
     }
 
     private async Task LoadDetailsAsync()
@@ -587,6 +611,7 @@ public partial class SoftwareView : UserControl
         {
             IgnoreStore.IgnoreSoftware(item.WingetId, item.AvailableVersion);
             item.Ignored = true;
+            item.IsSelected = false;
             Ui.Toast($"已忽略软件更新：{item.DisplayName}，可在筛选「已忽略」中恢复");
             Scanner.RefreshSummary();
             ApplyFilter();
@@ -622,6 +647,7 @@ public partial class SoftwareView : UserControl
         var completed = false;
         try
         {
+            Ctx.State.SoftwareUpdateCheck.MarkStale();
             completed = ProgressDialog.Run("正在升级软件", item.DisplayName,
                 async (progress, ct) =>
                 {
@@ -721,6 +747,7 @@ public partial class SoftwareView : UserControl
         var completed = false;
         try
         {
+            Ctx.State.SoftwareUpdateCheck.MarkStale();
             completed = ProgressDialog.Run("正在安装新版本", $"{item.DisplayName} {version}",
                 async (progress, ct) =>
                 {
@@ -808,91 +835,5 @@ public partial class SoftwareView : UserControl
         });
 
     private async void BtnUpgradeAll_Click(object sender, RoutedEventArgs e)
-    {
-        var pending = Ctx.State.Software
-            .Where(s => s.HasUpdate && !s.Ignored && !string.IsNullOrEmpty(s.WingetId))
-            .ToList();
-        if (pending.Count == 0)
-        {
-            var ignored = Ctx.State.Software.Count(s => s.Ignored);
-            Ui.Info("没有可升级项", ignored > 0
-                ? $"当前没有待升级的软件，另有 {ignored} 个更新已忽略。\n可在筛选「已忽略」中恢复后再升级。"
-                : "请先点击『检查更新（winget）』。");
-            return;
-        }
-
-        if (!Ui.Confirm("全部升级", $"将依次升级 {pending.Count} 个软件，安装过程可能需要几分钟。"))
-            return;
-
-        int ok = 0;
-        var failures = new List<string>();
-        var completed = false;
-
-        try
-        {
-            completed = ProgressDialog.Run("正在批量升级", $"共 {pending.Count} 个软件",
-                async (progress, ct) =>
-                {
-                    for (var i = 0; i < pending.Count; i++)
-                    {
-                        ct.ThrowIfCancellationRequested();
-                        var item = pending[i];
-                        var index = i;
-                        var share = 100.0 / pending.Count;
-
-                        var scoped = new Progress<ProgressInfo>(p =>
-                            progress.Report(new ProgressInfo
-                            {
-                                Percent = p.Percent >= 0 ? index * share + p.Percent * share / 100.0 : -1,
-                                Status = $"({index + 1}/{pending.Count}) {item.DisplayName} · {p.Status}",
-                                Detail = p.Detail,
-                                DetailHint = p.DetailHint,
-                                Metric = p.Metric,
-                                CanCancel = true
-                            }));
-
-                        try
-                        {
-                            var (code, output) = await Ctx.Software.InstallWithProgressAsync(
-                                item.WingetId!, scoped, ct);
-                            if (code == 0) ok++;
-                            else
-                            {
-                                var info = SoftwareService.ExplainFailure(code, output);
-                                Ui.Log($"批量升级失败（{item.DisplayName} / {item.WingetId}）：{info.CodeText} {info.Detail}", "ERROR");
-                                failures.Add($"{item.DisplayName}：{info.Title}");
-                            }
-                        }
-                        catch (OperationCanceledException) { throw; }
-                        catch (Exception ex)
-                        {
-                            failures.Add($"{item.DisplayName}：{ex.Message}");
-                        }
-                    }
-
-                    progress.Report(new ProgressInfo { Percent = 100, Status = "升级完成", CanCancel = false });
-                });
-        }
-        catch (OperationCanceledException)
-        {
-            await RefreshAsync();
-            Ui.Warn("升级已取消", $"已完成 {ok} 个，其余未执行；临时安装包已清理。");
-            return;
-        }
-
-        await RefreshAsync();
-
-        if (!completed)
-        {
-            Ui.Warn("升级已取消", $"已完成 {ok} 个，其余未执行。");
-            return;
-        }
-
-        Ui.Success("批量升级完成", $"成功 {ok} 个，未完成 {failures.Count} 个。" +
-                                  (failures.Count > 0
-                                      ? "\n\n" + string.Join("\n", failures.Take(6)) +
-                                        "\n\n" + SoftwareNetwork.Hint +
-                                        "\n\n可对未完成的软件单独点击『升级』，查看具体原因。"
-                                      : ""));
-    }
+        => await StartBatchAsync(Ctx.State.Software, true);
 }

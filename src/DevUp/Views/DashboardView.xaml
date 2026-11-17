@@ -68,12 +68,14 @@
                         </Grid>
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                             <TextBlock Style="{StaticResource StatValue}" Foreground="{StaticResource WarnBrush}"
-                                       Text="{Binding Summary.SoftwareUpdates}" />
+                                       Text="{Binding SoftwareUpdateCheck.CountText}" />
                             <TextBlock Style="{StaticResource SubTitle}" Text=" 个" VerticalAlignment="Bottom" Margin="3,0,0,5" />
                         </StackPanel>
                         <TextBlock Style="{StaticResource SubTitle}" Margin="0,4,0,0">
                             <Run Text="已安装 " /><Run Text="{Binding Summary.SoftwareTotal, Mode=OneWay}" /><Run Text=" 款软件" />
                         </TextBlock>
+                        <TextBlock Style="{StaticResource SubTitle}" Text="{Binding SoftwareUpdateCheck.Description}" TextWrapping="Wrap"
+                                   ToolTip="{Binding SoftwareUpdateCheck.Error}" Margin="0,5,0,0" />
                     </StackPanel>
                 </Button>
 
@@ -88,12 +90,14 @@
                         </Grid>
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                             <TextBlock Style="{StaticResource StatValue}" Foreground="{StaticResource WarnBrush}"
-                                       Text="{Binding Summary.DriverUpdates}" />
+                                       Text="{Binding DriverUpdateCheck.CountText}" />
                             <TextBlock Style="{StaticResource SubTitle}" Text=" 个" VerticalAlignment="Bottom" Margin="3,0,0,5" />
                         </StackPanel>
                         <TextBlock Style="{StaticResource SubTitle}" Margin="0,4,0,0">
                             <Run Text="驱动仓库 " /><Run Text="{Binding Summary.DriverPackages, Mode=OneWay}" /><Run Text=" 个安装包" />
                         </TextBlock>
+                        <TextBlock Style="{StaticResource SubTitle}" Text="{Binding DriverUpdateCheck.Description}" TextWrapping="Wrap"
+                                   ToolTip="{Binding DriverUpdateCheck.Error}" Margin="0,5,0,0" />
                     </StackPanel>
                 </Button>
 
@@ -107,13 +111,16 @@
                                        HorizontalAlignment="Right" />
                         </Grid>
                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                            <TextBlock Text="{Binding Summary.DeviceProblem}">
+                            <TextBlock Text="{Binding DeviceCheck.CountText}">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock" BasedOn="{StaticResource StatValue}">
                                         <Setter Property="Foreground" Value="{StaticResource ErrBrush}" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding Summary.DeviceProblem}" Value="0">
                                                 <Setter Property="Foreground" Value="{StaticResource OkBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding DeviceCheck.IsCurrent}" Value="False">
+                                                <Setter Property="Foreground" Value="{StaticResource SubTextBrush}" />
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -125,6 +132,8 @@
                             <Run Text="共 " /><Run Text="{Binding Summary.DeviceTotal, Mode=OneWay}" /><Run Text=" 个设备，缺少驱动 " />
                             <Run Text="{Binding Summary.DeviceUnknown, Mode=OneWay}" /><Run Text=" 个" />
                         </TextBlock>
+                        <TextBlock Style="{StaticResource SubTitle}" Text="{Binding DeviceCheck.Description}" TextWrapping="Wrap"
+                                   ToolTip="{Binding DeviceCheck.Error}" Margin="0,5,0,0" />
                     </StackPanel>
                 </Button>
             </UniformGrid>

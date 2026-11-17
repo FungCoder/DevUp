@@ -15,6 +15,13 @@ public static class ReportService
             generatedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
             machine = Environment.MachineName,
             summary = state.Summary,
+            checks = new
+            {
+                devices = state.DeviceCheck,
+                softwareInventory = state.SoftwareInventoryCheck,
+                softwareUpdates = state.SoftwareUpdateCheck,
+                driverUpdates = state.DriverUpdateCheck
+            },
             devices = state.Devices.Select(d => new
             {
                 d.FriendlyName, d.ClassName, d.Status, d.ProblemCode, d.ProblemText,
@@ -63,11 +70,17 @@ public static class ReportService
 
         sb.AppendLine("<div class=\"cards\">");
         sb.AppendLine($"<div class=\"card\"><b>{state.Summary.DeviceTotal}</b><span>设备总数</span></div>");
-        sb.AppendLine($"<div class=\"card\"><b class=\"err\">{state.Summary.DeviceProblem}</b><span>设备问题</span></div>");
+        sb.AppendLine($"<div class=\"card\"><b class=\"err\">{state.DeviceCheck.CountText}</b><span>设备问题</span></div>");
         sb.AppendLine($"<div class=\"card\"><b>{state.Summary.DriverPackages}</b><span>驱动包</span></div>");
-        sb.AppendLine($"<div class=\"card\"><b class=\"warn\">{state.Summary.DriverUpdates}</b><span>驱动更新</span></div>");
-        sb.AppendLine($"<div class=\"card\"><b class=\"warn\">{state.Summary.SoftwareUpdates}</b><span>软件更新</span></div>");
+        sb.AppendLine($"<div class=\"card\"><b class=\"warn\">{state.DriverUpdateCheck.CountText}</b><span>驱动更新</span></div>");
+        sb.AppendLine($"<div class=\"card\"><b class=\"warn\">{state.SoftwareUpdateCheck.CountText}</b><span>软件更新</span></div>");
         sb.AppendLine("</div>");
+        foreach (var (name, check) in new[]
+        {
+            ("设备", state.DeviceCheck), ("软件清单", state.SoftwareInventoryCheck),
+            ("驱动更新", state.DriverUpdateCheck), ("软件更新", state.SoftwareUpdateCheck)
+        })
+            sb.AppendLine($"<p>{name}：{Esc(check.Description)} {Esc(check.Error)}</p>");
 
         sb.AppendLine("<h2>有问题的设备</h2><table><tr><th>设备</th><th>类别</th><th>问题</th><th>当前驱动</th><th>厂商</th></tr>");
         foreach (var d in state.Devices.Where(x => x.HasProblem))

@@ -22,6 +22,7 @@ public partial class DriversView : UserControl
         Ctx.State.Devices.CollectionChanged += (_, _) => ApplyFilter();
         // 扫描会重建驱动更新列表：重新套用“显示已忽略 / 隐藏已忽略”的筛选
         Ctx.State.DriverUpdates.CollectionChanged += (_, _) => ApplyUpdateFilter();
+        Ctx.State.DriverUpdateCheck.PropertyChanged += (_, _) => ApplyUpdateFilter();
         UpdateHint.Text = "";
     }
 
@@ -265,7 +266,6 @@ public partial class DriversView : UserControl
         => await Ctx.RunScanAsync("正在查询 Windows Update 驱动…", async (_, ct) =>
         {
             await Scanner.ScanDriverUpdatesAsync(false, ct);
-            _hasScannedUpdates = true;
             _showIgnoredUpdates = false;
             ApplyUpdateFilter();
         });
@@ -304,7 +304,6 @@ public partial class DriversView : UserControl
                 return;
             }
 
-            _hasScannedUpdates = true;
             _showIgnoredUpdates = false;
             ApplyUpdateFilter();
             Ctx.State.StatusText = "完成 · " + DateTime.Now.ToString("HH:mm:ss");
@@ -404,7 +403,6 @@ public partial class DriversView : UserControl
 
     // ---------------- 驱动更新：勾选与安装 ----------------
 
-    private bool _hasScannedUpdates;
     private bool _showIgnoredUpdates;
 
     /// <summary>重新应用驱动更新筛选：默认隐藏已忽略项，可切换到「已忽略」视图。</summary>
@@ -437,7 +435,7 @@ public partial class DriversView : UserControl
                 EmptyTitle.Text = "没有已忽略的驱动更新";
                 EmptyDesc.Text = "在更新列表中选中一项后，点左下角「忽略此更新」";
             }
-            else if (_hasScannedUpdates)
+            else if (Ctx.State.DriverUpdateCheck.IsCurrent)
             {
                 EmptyTitle.Text = "没有发现可用的驱动更新";
                 EmptyDesc.Text = ignoredCount > 0
@@ -446,7 +444,7 @@ public partial class DriversView : UserControl
             }
             else
             {
-                EmptyTitle.Text = "还没有扫描";
+                EmptyTitle.Text = Ctx.State.DriverUpdateCheck.Description;
                 EmptyDesc.Text = "点上方「扫描驱动更新」查询官方驱动";
             }
         }
@@ -466,8 +464,8 @@ public partial class DriversView : UserControl
         var ignoredCount = all.Count(i => i.Ignored);
 
         BtnCheckAll.IsEnabled = total > 0 && !_showIgnoredUpdates;
-        BtnInstallAll.IsEnabled = total > 0 && !_showIgnoredUpdates;
-        BtnInstallSelected.IsEnabled = selected > 0 && !_showIgnoredUpdates;
+        BtnInstallAll.IsEnabled = total > 0 && !_showIgnoredUpdates && Ctx.State.DriverUpdateCheck.IsCurrent;
+        BtnInstallSelected.IsEnabled = selected > 0 && !_showIgnoredUpdates && Ctx.State.DriverUpdateCheck.IsCurrent;
         BtnInstallSelected.Content = selected > 0 ? $"安装选中的 {selected} 项" : "安装选中";
 
         var allChecked = total > 0 && selected == total;
@@ -484,11 +482,11 @@ public partial class DriversView : UserControl
         {
             UpdateHint.Text = _showIgnoredUpdates
                 ? (ignoredCount > 0 ? $"正在查看 {ignoredCount} 个已忽略的更新 · 选中后可恢复" : "")
-                : _hasScannedUpdates
+                : Ctx.State.DriverUpdateCheck.IsCurrent
                     ? (ignoredCount > 0
                         ? $"没有待安装的更新 · {ignoredCount} 个已忽略，可点右上角查看并恢复"
                         : "没有发现可用的驱动更新")
-                    : "";
+                    : Ctx.State.DriverUpdateCheck.Description;
             return;
         }
 
@@ -497,6 +495,8 @@ public partial class DriversView : UserControl
             : selected == 0
                 ? $"共 {total} 个更新 · 勾选左侧方框后，点「安装选中」"
                 : $"已勾选 {selected} / {total} 个更新";
+        if (!Ctx.State.DriverUpdateCheck.IsCurrent)
+            UpdateHint.Text = Ctx.State.DriverUpdateCheck.Description;
     }
 
     private void UpdateGrid_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateSelectionState();
@@ -609,6 +609,8 @@ public partial class DriversView : UserControl
             }
 
             // 3) 安装
+            Ctx.State.DriverUpdateCheck.MarkStale();
+            Ctx.State.DeviceCheck.MarkStale();
             var result = await Ctx.DriverUpdates.InstallAsync(items);
             Ui.Log(result.Message);
 

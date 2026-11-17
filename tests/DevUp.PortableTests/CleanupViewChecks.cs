@@ -3,7 +3,6 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using DevUp.Core;
 using DevUp.Models;
@@ -12,25 +11,7 @@ using DevUp.Views;
 
 internal static class CleanupViewChecks
 {
-    public static void Run()
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            var frame = new DispatcherFrame();
-            Dispatcher.CurrentDispatcher.BeginInvoke(new Action(async () =>
-            {
-                try { await RunOnUiThreadAsync(); }
-                catch (Exception exception) { failure = exception; }
-                finally { frame.Continue = false; }
-            }));
-            Dispatcher.PushFrame(frame);
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (failure is not null) throw new InvalidOperationException("清理界面检查失败", failure);
-    }
+    public static void Run() => UiTestHost.Run(RunOnUiThreadAsync, "清理界面检查失败");
 
     private static async Task RunOnUiThreadAsync()
     {
@@ -53,14 +34,7 @@ internal static class CleanupViewChecks
         using var rulesStream = typeof(CleanupService).Assembly.GetManifestResourceStream("cleaning-rules.ini")!;
         using var reader = new StreamReader(rulesStream);
         var service = new CleanupService(reader.ReadToEnd(), variables, () => fixture.Protected, _ => false);
-        var app = new Application
-        {
-            ShutdownMode = ShutdownMode.OnExplicitShutdown,
-            Resources = new ResourceDictionary
-            {
-                Source = new Uri("pack://application:,,,/DevUp;component/Assets/Theme.xaml")
-            }
-        };
+        var app = UiTestHost.CreateApplication();
         var view = new CleanupView(service);
         var window = new Window
         {
@@ -101,20 +75,7 @@ internal static class CleanupViewChecks
             }
             await Task.Delay(250);
         }
-        void SaveImage(string name)
-        {
-            window.UpdateLayout();
-            var content = (FrameworkElement)window.Content;
-            var bitmap = new RenderTargetBitmap((int)content.ActualWidth, (int)content.ActualHeight,
-                96, 96, PixelFormats.Pbgra32);
-            bitmap.Render((Visual)window.Content);
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(bitmap));
-            var directory = Path.Combine(Directory.GetCurrentDirectory(), "build");
-            Directory.CreateDirectory(directory);
-            using var output = File.Create(Path.Combine(directory, name));
-            encoder.Save(output);
-        }
+        void SaveImage(string name) => UiTestHost.SaveImage(window, name);
 
         try
         {

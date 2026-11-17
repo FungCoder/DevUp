@@ -3,6 +3,17 @@ using System.Text.Json;
 using DevUp.Core;
 using DevUp.Services;
 
+if (args.Contains("--software-iteration-only"))
+{
+    SoftwareChecks.Run();
+    await SoftwareIterationChecks.RunAsync();
+    return;
+}
+if (args.Contains("--software-ui"))
+{
+    SoftwareViewChecks.Run();
+    return;
+}
 if (args.Contains("--network-ui"))
 {
     NetworkChecks.RunUi();
@@ -53,6 +64,7 @@ if (args.Contains("--probe-small"))
 await NetworkChecks.RunAsync();
 await UpdateChecks.RunAsync();
 SoftwareChecks.Run();
+await SoftwareIterationChecks.RunAsync();
 if (args.Contains("--software-only")) return;
 await CleanupChecks.RunAsync();
 

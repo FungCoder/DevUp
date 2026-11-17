@@ -46,9 +46,11 @@ public static class Scanner
         });
     }
 
-    public static async Task ScanDevicesAsync(CancellationToken ct = default)
+    public static Task ScanDevicesAsync(CancellationToken ct = default)
+        => Ctx.State.DeviceCheck.RunAsync(async () =>
     {
         var devices = await Ctx.Devices.ScanAsync(ct);
+        ct.ThrowIfCancellationRequested();
 
         // 只有“存在且有异常”的设备才会带上忽略标记：
         // 设备恢复正常后应当正常显示，而不是继续被旧记录隐藏。
@@ -70,7 +72,8 @@ public static class Scanner
             SoftwareUpdates = Ctx.State.Software.Count(i => i.HasUpdate && !i.Ignored),
             ScannedAt = DateTime.Now
         };
-    }
+        return Ctx.State.Summary.DeviceProblem;
+    });
 
     public static async Task ScanDriverPackagesAsync(CancellationToken ct = default)
     {
@@ -81,47 +84,61 @@ public static class Scanner
         RefreshSummary();
     }
 
-    public static async Task ScanSoftwareAsync(CancellationToken ct = default)
+    public static Task ScanSoftwareAsync(CancellationToken ct = default)
+        => Ctx.State.SoftwareInventoryCheck.RunAsync(async () =>
     {
         var registry = await Task.Run(SoftwareService.ScanRegistry, ct).WaitAsync(ct);
         ct.ThrowIfCancellationRequested();
         var msix = await Ctx.Software.ScanMsixAsync(ct);
+        ct.ThrowIfCancellationRequested();
+        var selectedIds = Ctx.State.Software.Where(s => s.IsSelected && s.WingetId is not null)
+            .Select(s => s.WingetId!).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         Ctx.State.Software.Clear();
         foreach (var s in registry) Ctx.State.Software.Add(s);
         foreach (var s in msix) Ctx.State.Software.Add(s);
 
         // 清单重建后重新关联上次的 winget 结果，避免“可用版本”被清空
-        if (Ctx.State.SoftwareUpdates.Count > 0) CorrelateUpdates();
+        if (Ctx.State.SoftwareUpdateCheck.HasResult) CorrelateUpdates(selectedIds);
+        Ctx.State.SoftwareUpdateCheck.MarkStale();
 
         RefreshSummary();
         RaiseSoftwareChanged();
-    }
+        return Ctx.State.Software.Count;
+    });
 
-    public static async Task ScanDriverUpdatesAsync(bool includeMicrosoftUpdate, CancellationToken ct = default)
+    public static Task ScanDriverUpdatesAsync(bool includeMicrosoftUpdate, CancellationToken ct = default)
+        => Ctx.State.DriverUpdateCheck.RunAsync(async () =>
     {
         var updates = await Ctx.DriverUpdates.SearchAsync(includeMicrosoftUpdate, ct);
+        ct.ThrowIfCancellationRequested();
         foreach (var u in updates) u.Ignored = IgnoreStore.IsDriverIgnored(u.Key);
 
         Ctx.State.DriverUpdates.Clear();
         foreach (var u in updates) Ctx.State.DriverUpdates.Add(u);
         RefreshSummary();
-    }
+        return Ctx.State.Summary.DriverUpdates;
+    });
 
-    public static async Task ScanSoftwareUpdatesAsync(CancellationToken ct = default)
+    public static Task ScanSoftwareUpdatesAsync(CancellationToken ct = default)
+        => Ctx.State.SoftwareUpdateCheck.RunAsync(async () =>
     {
         var updates = await Ctx.Software.GetUpdatesAsync(ct);
+        ct.ThrowIfCancellationRequested();
         Ctx.State.SoftwareUpdates.Clear();
         foreach (var u in updates) Ctx.State.SoftwareUpdates.Add(u);
 
         CorrelateUpdates();
         RefreshSummary();
         RaiseSoftwareChanged();
-    }
+        return Ctx.State.Summary.SoftwareUpdates;
+    });
 
     /// <summary>把 winget 结果贴回已装清单（含无法关联的“仅 winget 源”条目）。</summary>
-    private static void CorrelateUpdates()
+    private static void CorrelateUpdates(HashSet<string>? selectedIds = null)
     {
+        selectedIds ??= Ctx.State.Software.Where(item => item.IsSelected && item.WingetId is not null)
+            .Select(item => item.WingetId!).ToHashSet(StringComparer.OrdinalIgnoreCase);
         // 清空上一次的关联状态
         foreach (var s in Ctx.State.Software)
         {
@@ -141,7 +158,11 @@ public static class Scanner
 
         // 关联完成后才知道每条软件对应的“可用版本”，此时再套用忽略记录
         foreach (var s in Ctx.State.Software)
+        {
             s.Ignored = s.HasUpdate && IgnoreStore.IsSoftwareIgnored(s.WingetId, s.AvailableVersion);
+            s.IsSelected = s.HasUpdate && !s.Ignored && s.WingetId is not null &&
+                selectedIds.Contains(s.WingetId);
+        }
     }
 
     public static void RefreshSummary()
@@ -159,5 +180,8 @@ public static class Scanner
             SoftwareUpdates = Ctx.State.Software.Count(s => s.HasUpdate && !s.Ignored),
             ScannedAt = s.ScannedAt
         };
+        Ctx.State.DeviceCheck.UpdateCount(Ctx.State.Summary.DeviceProblem);
+        Ctx.State.DriverUpdateCheck.UpdateCount(Ctx.State.Summary.DriverUpdates);
+        Ctx.State.SoftwareUpdateCheck.UpdateCount(Ctx.State.Summary.SoftwareUpdates);
     }
 }

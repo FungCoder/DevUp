@@ -61,7 +61,7 @@ public partial class MainWindow : Window
                 case nameof(Models.ScanState.Summary):
                     ScanTimeText.Text = Ctx.State.Summary.ScannedAt == default
                         ? ""
-                        : "上次扫描：" + Ctx.State.Summary.ScannedAt.ToString("HH:mm:ss");
+                        : "设备扫描：" + Ctx.State.Summary.ScannedAt.ToString("HH:mm:ss");
                     break;
             }
         };

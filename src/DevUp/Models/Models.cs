@@ -161,6 +161,14 @@ public sealed class SoftwareItem : INotifyPropertyChanged
     /// <summary>是否在 winget 源中匹配到了该软件（用于状态标签）。</summary>
     public bool HasWingetMatch => !string.IsNullOrEmpty(WingetId);
 
+    private bool _isSelected;
+    /// <summary>是否勾选参加批量升级；与详情行的选中状态独立。</summary>
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set { if (_isSelected != value) { _isSelected = value; OnChanged(); } }
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnChanged([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
@@ -305,7 +313,7 @@ public sealed class ScanSummary
     public int DriverUpdates { get; set; }
     public int SoftwareTotal { get; set; }
     public int SoftwareUpdates { get; set; }
-    public DateTime ScannedAt { get; set; } = DateTime.Now;
+    public DateTime ScannedAt { get; set; }
 }
 
 public sealed class LogEntry
@@ -317,6 +325,10 @@ public sealed class LogEntry
 
 public sealed class ScanState : INotifyPropertyChanged
 {
+    public CheckStatus DeviceCheck { get; } = new();
+    public CheckStatus SoftwareInventoryCheck { get; } = new();
+    public CheckStatus SoftwareUpdateCheck { get; } = new();
+    public CheckStatus DriverUpdateCheck { get; } = new();
     public ObservableCollection<DeviceItem> Devices { get; } = new();
     public ObservableCollection<DriverPackageItem> DriverPackages { get; } = new();
     public ObservableCollection<DriverUpdateItem> DriverUpdates { get; } = new();

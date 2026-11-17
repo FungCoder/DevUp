@@ -4,7 +4,7 @@
 > 界面用 WPF 自绘，更新逻辑复用成熟的开源内核，以**单个 DevUp.exe** 分发，使用官方 **.NET 8 桌面运行时（x64）**，无需安装 DevUp。
 
 - 作者：风之翼灵'Blog · <https://www.fungj.com>
-- 版本：1.4.0（Windows 10 19041+ / Windows 11，x64）
+- 版本：1.5.0（Windows 10 19041+ / Windows 11，x64）
 - 许可证：MIT（第三方组件各自遵循其许可证，见 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)）
 
 ![DevUp 概览（系统信息与个人路径已打码）](docs/images/ui-dashboard-redacted.png)
@@ -26,6 +26,8 @@
 ### 概览
 可点击的统计卡片（可更新软件 / 可更新驱动 / 需要处理的设备），点「查看 ›」直接跳转并自动套用筛选；系统信息磁贴与最近日志。
 
+设备、驱动更新和软件更新分别记录检查状态及上次成功时间。尚未成功检查时显示「—」，成功检查后才显示零；失败、取消及需要复核时明确标注旧结果。JSON / HTML 报告包含各模块检查状态。
+
 ### 驱动与设备
 - 设备列表：状态彩色标签、按状态筛选、点击行查看驱动版本 / 提供者 / INF / 硬件 ID / 服务名。
 - 可用驱动更新：来自 Windows Update 官方源，勾选后「安装选中的 N 项」或「安装全部」。
@@ -34,6 +36,8 @@
 - Windows Update 里没有的驱动，可用「查目录」按硬件 ID 检索 Microsoft Update Catalog。
 
 ### 软件更新
+- 支持按软件名称、发布者或 winget 包 ID 搜索；复选框可选择当前筛选结果或清空全部勾选，显示隐藏在筛选之外的已勾选数量，支持升级选中项。「全部升级」包含筛选之外的全部可升级软件，排除已忽略项。
+- 批量升级逐项结果保留在当前会话的软件页面，支持复制全部结果、只重试失败项以及继续取消或尚未执行的项目。重试和继续前重新扫描清单及更新，跳过已无可升级项的软件；成功项目不会重复执行。新批次会替换上一批结果，退出程序后不保留批次。
 - `winget list --source winget` 精确比对，显示「已装版本 → 可用版本」；无更新时也保留包 ID，可查看清单信息。没有升级不代表已是厂商最新版，软件源可能落后于官网。
 - 选中一行后展示 **官方更新说明、发布日期、安装包类型、官方下载地址**，以及 `winget show` 清单登记的 **SHA256**。
 - 「下载并校验安装包」保存安装包到下载目录，并计算本地 **SHA256 + MD5** 与官方清单值比对：
@@ -198,6 +202,8 @@ DevUp/
 本项目自身代码由 风之翼灵'Blog 维护，以 MIT 许可证发布；第三方代码组件保留各自 MIT 许可证，Winapp2 适配规则数据单独遵循 CC BY-SA 4.0（见 `docs/ATTRIBUTION.md` 与 `LICENSE`）。
 
 便携路径回归检查：`dotnet run --project tests/DevUp.PortableTests -c Release`（含真实 PowerShell 调用；不安装软件或驱动）。
+
+软件状态、搜索及批量执行回归：`dotnet run --project tests/DevUp.PortableTests -c Release -- --software-iteration-only`。安装过程使用模拟执行器，验证失败重试、取消和继续，不安装真实软件。软件页交互与宽窄窗口布局：`dotnet run --project tests/DevUp.PortableTests -c Release -- --software-ui`，使用模拟清单生成 `build/software-iteration-wide.png` 和 `build/software-iteration-narrow.png`。
 
 窗口交互检查需在有交互桌面的 Windows 本机运行：`dotnet run --project tests/DevUp.PortableTests -c Release -- --dialogs-only`。手动拖动验证可使用 `--dialogs-preview`，测试窗口会在 45 秒后自动关闭；这两项不在托管 CI 上运行。
 
