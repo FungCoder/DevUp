@@ -13,10 +13,8 @@ internal static class UpdateInstaller
 
     internal static void DiscardJob(string directory)
     {
-        var root = Path.Combine(PortablePaths.StorageRoot, "updates");
-        var path = Path.GetFullPath(directory);
-        if (!string.Equals(Path.GetDirectoryName(path), root, StringComparison.OrdinalIgnoreCase) ||
-            !Guid.TryParseExact(Path.GetFileName(path), "N", out _)) return;
+        var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+        if (!IsJobDirectory(path, Path.TrimEndingDirectorySeparator(PortablePaths.Root))) return;
         if (!Directory.Exists(path)) return;
         try
         {
@@ -50,11 +48,7 @@ internal static class UpdateInstaller
     internal static async Task StartAsync(string downloadedFile, string digest, Version version)
     {
         var target = Environment.ProcessPath ?? throw new InvalidOperationException("无法定位当前 DevUp.exe。");
-        var job = Path.GetDirectoryName(Path.GetFullPath(downloadedFile))!;
-        if (!Services.CleanupService.IsBelow(job, Path.Combine(PortablePaths.StorageRoot, "updates")) ||
-            Path.GetFileName(downloadedFile) != "DevUp.new.exe" ||
-            !Path.GetDirectoryName(target)!.Equals(PortablePaths.Root, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("更新文件目录不匹配，已停止替换。");
+        var job = ValidatePaths(downloadedFile, target, PortablePaths.Root);
         using var process = Process.GetCurrentProcess();
         var manifest = new
         {
@@ -90,4 +84,22 @@ internal static class UpdateInstaller
         var result = TakeResult();
         throw new IOException(result?.Message ?? "更新辅助进程未就绪，当前程序继续运行，请稍后重试。");
     }
+
+    /// <summary>验证更新位置；目录比较忽略规范化后路径的末尾分隔符。</summary>
+    internal static string ValidatePaths(string downloadedFile, string target, string appRoot)
+    {
+        var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(appRoot));
+        var job = Path.GetDirectoryName(Path.GetFullPath(downloadedFile))!;
+        var targetDirectory = Path.GetDirectoryName(Path.GetFullPath(target))!;
+        if (!IsJobDirectory(job, root) ||
+            Path.GetFileName(downloadedFile) != "DevUp.new.exe" ||
+            !Path.TrimEndingDirectorySeparator(targetDirectory).Equals(root, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("更新文件目录不匹配，已停止替换。");
+        return job;
+    }
+
+    private static bool IsJobDirectory(string directory, string appRoot)
+        => string.Equals(Path.GetDirectoryName(directory), Path.Combine(appRoot, "DevUpData", "updates"),
+                StringComparison.OrdinalIgnoreCase) &&
+            Guid.TryParseExact(Path.GetFileName(directory), "N", out _);
 }

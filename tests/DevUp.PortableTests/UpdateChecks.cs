@@ -176,6 +176,27 @@ internal static class UpdateChecks
         checks++;
         await CheckInstallerAsync(binary, false, false, true);
         checks++;
+        var validationRoot = Path.Combine(fixture.Root, "更新目录 含空格");
+        var validationJob = Path.Combine(validationRoot, "DevUpData", "updates", Guid.NewGuid().ToString("N"));
+        var validationCandidate = Path.Combine(validationJob, "DevUp.new.exe");
+        var validationTarget = Path.Combine(validationRoot, "DevUp.exe");
+        Check(UpdateInstaller.ValidatePaths(validationCandidate, validationTarget,
+            validationRoot + Path.DirectorySeparatorChar) == validationJob,
+            "程序目录末尾分隔符导致合法更新目录被拒绝");
+        Check(UpdateInstaller.ValidatePaths(validationCandidate, validationTarget, validationRoot) == validationJob,
+            "不带末尾分隔符的程序目录未通过检查");
+        Check(UpdateInstaller.ValidatePaths(validationCandidate, validationTarget,
+            validationRoot.Replace('\\', '/')) == validationJob, "等价目录分隔符未规范化");
+        void RejectPath(string candidate, string target)
+        {
+            try { UpdateInstaller.ValidatePaths(candidate, target, validationRoot); }
+            catch (InvalidOperationException) { checks++; return; }
+            throw new InvalidOperationException("更新路径越界未被拒绝：" + candidate + " -> " + target);
+        }
+        RejectPath(validationCandidate, Path.Combine(validationRoot + "-other", "DevUp.exe"));
+        RejectPath(Path.Combine(validationRoot, "DevUp.new.exe"), validationTarget);
+        RejectPath(Path.Combine(validationJob, "other.exe"), validationTarget);
+        RejectPath(Path.Combine(validationJob, "nested", "DevUp.new.exe"), validationTarget);
         var rejectedJob = UpdateInstaller.CreateJobDirectory();
         try
         {
@@ -186,11 +207,68 @@ internal static class UpdateChecks
                 await UpdateInstaller.StartAsync(candidate, Hash(binary), typeof(CleanupService).Assembly.GetName().Version!);
                 throw new InvalidOperationException("helper 未拒绝替换非 DevUp 的测试宿主");
             }
-            catch (Exception ex) when (ex is IOException ||
-                ex is InvalidOperationException && ex.Message.Contains("更新文件目录不匹配")) { checks++; }
+            catch (IOException ex) when (ex.Message.Contains("原文件不是 DevUp")) { checks++; }
         }
         finally { UpdateInstaller.DiscardJob(rejectedJob); }
-        Console.WriteLine($"规则与程序更新回归通过：{checks} 项；替换测试只操作专用临时目录，不启动新版程序。");
+        await CheckProductionUpdateFlowAsync();
+        checks++;
+        Console.WriteLine($"规则与程序更新回归通过：{checks} 项；真实准备、退出、替换和重启仅操作隔离测试宿主。");
+    }
+
+    private static async Task CheckProductionUpdateFlowAsync()
+    {
+        using var fixture = new CleanupChecks.Fixture();
+        var root = Path.Combine(fixture.Root, "自动更新 含空格");
+        var probeFiles = Path.Combine(AppContext.BaseDirectory, "UpdateProbe");
+        foreach (var source in Directory.EnumerateFiles(probeFiles, "*", SearchOption.AllDirectories))
+        {
+            var destination = Path.Combine(root, Path.GetRelativePath(probeFiles, source));
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(source, destination);
+        }
+        var target = Path.Combine(root, "DevUp.UpdateProbe.exe");
+        var expected = Hash(await File.ReadAllBytesAsync(target));
+        var start = new ProcessStartInfo(target)
+        {
+            UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden,
+            WorkingDirectory = fixture.Root, RedirectStandardError = true
+        };
+        start.ArgumentList.Add("--prepare");
+        using var parent = Process.Start(start)!;
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var errors = parent.StandardError.ReadToEndAsync(timeout.Token);
+        try { await parent.WaitForExitAsync(timeout.Token); }
+        catch { if (!parent.HasExited) parent.Kill(true); throw; }
+        if (parent.ExitCode != 0)
+            throw new InvalidOperationException("真实更新准备流程失败：" + await errors);
+
+        var resultFile = Path.Combine(root, "DevUpData", "updates", "update-result.json");
+        var restartedFile = Path.Combine(root, "restarted.json");
+        while (!File.Exists(resultFile) || !File.Exists(restartedFile))
+        {
+            timeout.Token.ThrowIfCancellationRequested();
+            if (File.Exists(resultFile))
+            {
+                using var failed = JsonDocument.Parse(await File.ReadAllTextAsync(resultFile, timeout.Token));
+                if (!failed.RootElement.GetProperty("Success").GetBoolean())
+                    throw new InvalidOperationException("真实替换流程失败：" + failed.RootElement.GetProperty("Message").GetString());
+            }
+            await Task.Delay(50, timeout.Token);
+        }
+        using var restarted = JsonDocument.Parse(await File.ReadAllTextAsync(restartedFile, timeout.Token));
+        try
+        {
+            using var child = Process.GetProcessById(restarted.RootElement.GetProperty("Id").GetInt32());
+            if (child.StartTime.ToUniversalTime().Ticks == restarted.RootElement.GetProperty("StartedUtcTicks").GetInt64())
+                await child.WaitForExitAsync(timeout.Token);
+        }
+        catch (ArgumentException) { /* 重启的测试宿主已经退出。 */ }
+        using var result = JsonDocument.Parse(await File.ReadAllTextAsync(resultFile, timeout.Token));
+        var backup = Path.Combine(root, "DevUpData", "updates", "DevUp.previous.exe");
+        if (!result.RootElement.GetProperty("Success").GetBoolean() || !File.Exists(backup) ||
+            Hash(await File.ReadAllBytesAsync(backup, timeout.Token)) != expected ||
+            Hash(await File.ReadAllBytesAsync(target, timeout.Token)) != expected)
+            throw new InvalidOperationException("更新重启后没有保留正确的程序与备份。");
     }
 
     private static async Task CheckInstallerAsync(byte[] binary, bool tampered, bool invalidTarget, bool locked = false)

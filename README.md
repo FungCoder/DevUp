@@ -4,7 +4,7 @@
 > 界面用 WPF 自绘，更新逻辑复用成熟的开源内核，以**单个 DevUp.exe** 分发，使用官方 **.NET 8 桌面运行时（x64）**，无需安装 DevUp。
 
 - 作者：风之翼灵'Blog · <https://www.fungj.com>
-- 版本：1.5.0（Windows 10 19041+ / Windows 11，x64）
+- 版本：1.5.1（Windows 10 19041+ / Windows 11，x64）
 - 许可证：MIT（第三方组件各自遵循其许可证，见 [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)）
 
 ![DevUp 概览（系统信息与个人路径已打码）](docs/images/ui-dashboard-redacted.png)
@@ -74,6 +74,8 @@
 
 ### DevUp 与规则更新
 「备份与工具」顶部检查本项目 GitHub 正式 Release 的 `DevUp.exe`。默认仅在启动时、每天至多检查一次，可关闭；没有后台常驻进程。发现更新时侧栏显示入口。只信任固定仓库 `FungCoder/DevUp`，按 GitHub 附件登记的 SHA256 与大小校验；缺少校验信息时不自动安装。
+
+1.5.1 修复了目录末尾分隔符导致的「更新文件目录不匹配」。遇到此错误的旧版需要先关闭程序，手动下载并覆盖一次 DevUp.exe；错误发生在旧版执行替换之前，仅重新下载新版无法修复旧版自身的检查逻辑。保留原有 DevUpData 目录即可继续使用设置、日志和备份。
 
 程序下载后验证产品和版本，通过短时 PowerShell helper 等待主进程退出再替换、重启。复制或启动调用失败时尝试还原；保留一份旧版在 `DevUpData/updates/DevUp.previous.exe`。进程启动后的应用内部故障不能由 helper 保证自动恢复，可关闭程序后用该备份替换原 exe。设置、备份及下载目录保留。helper 完成后清理本次临时文件。
 
@@ -211,6 +213,6 @@ DevUp/
 
 清理页交互与布局检查：`dotnet run --project tests/DevUp.PortableTests -c Release -- --cleanup-ui`，使用隔离测试文件验证扫描、取消、确认清理、按钮状态、动画结束与窄窗口布局，生成 `build/cleanup-ui*.png`；不会扫描或清理真实系统缓存。
 
-程序及内嵌规则检查：`dotnet run --project tests/DevUp.PortableTests -c Release -- --updates-only`，使用内存 HTTP 响应与隔离临时目录验证单文件下载、校验、规则安全策略和真实 PowerShell 替换，不启动被替换程序，不修改真实 DevUp.exe。
+程序及内嵌规则检查：`dotnet run --project tests/DevUp.PortableTests -c Release -- --updates-only`，使用内存 HTTP 响应与隔离临时目录验证单文件下载、校验、规则安全策略，以及真实更新准备、父进程退出、备份替换和无界面测试宿主重启；不修改或启动用户的 DevUp 程序。
 
 自启配置检查：`dotnet run --project tests/DevUp.PortableTests -c Release -- --startup-only`。只创建唯一命名的无副作用测试入口，验证禁用、恢复、旧快照拒绝及配置冲突并清理。普通权限验证用户注册表和启动文件夹；任务修改需要管理员测试环境，服务及实际重启效果需另外验证。

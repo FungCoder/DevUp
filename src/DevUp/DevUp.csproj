@@ -10,7 +10,7 @@
 
     <AssemblyName>DevUp</AssemblyName>
     <RootNamespace>DevUp</RootNamespace>
-    <Version>1.5.0</Version>
+    <Version>1.5.1</Version>
     <Product>DevUp 驱动与软件更新助手</Product>
     <AssemblyTitle>DevUp</AssemblyTitle>
     <Company>风之翼灵'Blog</Company>
@@ -42,6 +42,7 @@
     <EmbeddedResource Include="Scripts\apply-update.ps1" LogicalName="apply-update.ps1" />
     <EmbeddedResource Include="..\..\lib\FluentCleaner\LICENSE" LogicalName="FluentCleaner.LICENSE" />
     <InternalsVisibleTo Include="DevUp.PortableTests" />
+    <InternalsVisibleTo Include="DevUp.UpdateProbe" />
     <!-- 应用图标（exe 图标由 ApplicationIcon 指定；这里作为 WPF 资源供界面使用） -->
     <Resource Include="Assets\app.ico" />
   </ItemGroup>

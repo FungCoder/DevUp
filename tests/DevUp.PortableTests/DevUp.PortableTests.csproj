@@ -10,7 +10,16 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/DevUp/DevUp.csproj" />
+    <ProjectReference Include="../DevUp.UpdateProbe/DevUp.UpdateProbe.csproj" ReferenceOutputAssembly="false" />
     <!-- 在测试宿主中构造主窗口时，WPF 从入口程序集解析相对图标 URI。 -->
     <Resource Include="../../src/DevUp/Assets/app.ico" Link="Assets/app.ico" />
   </ItemGroup>
+  <Target Name="CopyUpdateProbe" AfterTargets="Build">
+    <ItemGroup>
+      <UpdateProbeFile Include="$(MSBuildProjectDirectory)/../DevUp.UpdateProbe/bin/$(Configuration)/$(TargetFramework)/$(RuntimeIdentifier)/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(UpdateProbeFile)"
+          DestinationFiles="@(UpdateProbeFile->'$(OutDir)UpdateProbe/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>
